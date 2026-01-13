@@ -70,3 +70,15 @@ create_hyperpod_module = true
 
 # Lifecycle Scripts Configuration
 lifecycle_scripts_path = "../../LifecycleScripts/base-config"
+
+
+# Training Plan (optional)
+use_training_plan = false
+# training_plan_arn = "arn:aws:sagemaker:us-west-2:123456789012:training-plan/your-plan-name"
+
+# If your compute group key in instance_groups is not "compute"
+# training_plan_instance_group_name = "workers"
+
+# Optional validation (recommended)
+# training_plan_expected_instance_type  = "ml.p4d.24xlarge"
+# training_plan_expected_instance_count = 8

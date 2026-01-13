@@ -303,3 +303,34 @@ variable "instance_groups" {
     }
   }
 }
+
+variable "use_training_plan" {
+  description = "Whether to attach a SageMaker Training Plan to a specific instance group."
+  type        = bool
+  default     = false
+}
+
+variable "training_plan_arn" {
+  description = "ARN of the SageMaker Training Plan to attach (when enabled)."
+  type        = string
+  default     = null
+}
+
+variable "training_plan_instance_group_name" {
+  description = "Instance group name that should receive the training plan (default matches repo examples: compute)."
+  type        = string
+  default     = "compute"
+}
+
+variable "training_plan_expected_instance_type" {
+  description = "Expected instance type required by the Training Plan (optional validation)."
+  type        = string
+  default     = null
+}
+
+variable "training_plan_expected_instance_count" {
+  description = "Expected instance count required by the Training Plan (optional validation)."
+  type        = number
+  default     = null
+}
+

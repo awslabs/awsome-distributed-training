@@ -2,10 +2,10 @@ locals {
   # Generate provisioning parameters JSON
   provisioning_parameters = merge(
     {
-      version           = "1.0.0"
-      workload_manager  = "slurm"
-      controller_group  = "controller-machine"
-      login_group       = "login-nodes"
+      version          = "1.0.0"
+      workload_manager = "slurm"
+      controller_group = "controller-machine"
+      login_group      = "login-nodes"
       worker_groups = [
         for name, config in var.instance_groups : {
           instance_group_name = name

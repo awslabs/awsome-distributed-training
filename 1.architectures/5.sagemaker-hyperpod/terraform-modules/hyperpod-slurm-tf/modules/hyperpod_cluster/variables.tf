@@ -43,3 +43,34 @@ variable "sagemaker_iam_role_name" {
   description = "Name of the SageMaker IAM role"
   type        = string
 }
+
+variable "use_training_plan" {
+  description = "Whether to attach a SageMaker Training Plan to cluster instance groups."
+  type        = bool
+  default     = false
+}
+
+variable "training_plan_arn" {
+  description = "ARN of the SageMaker Training Plan to attach (when enabled)."
+  type        = string
+  default     = null
+}
+
+variable "training_plan_instance_group_name" {
+  description = "Instance group name that should receive the SageMaker Training Plan."
+  type        = string
+  default     = "compute"
+}
+
+variable "training_plan_expected_instance_type" {
+  description = "Expected instance type required by the Training Plan (optional validation)."
+  type        = string
+  default     = null
+}
+
+variable "training_plan_expected_instance_count" {
+  description = "Expected instance count required by the Training Plan (optional validation)."
+  type        = number
+  default     = null
+}
+
