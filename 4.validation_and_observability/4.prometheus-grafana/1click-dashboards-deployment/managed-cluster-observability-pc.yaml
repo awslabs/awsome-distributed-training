@@ -53,8 +53,8 @@ Resources:
         Variables:
           REGION: !Ref AWS::Region
           PROMETHEUS_URL: !GetAtt GrafanaPrometheus.Outputs.AMPEndPointUrl
-          GRAFANA_WORKSPACE_ID: !GetAtt GrafanaPrometheus.Outputs.GrafanWorkspaceId
-          GRAFANA_WORKSPACE_URL: !GetAtt GrafanaPrometheus.Outputs.GrafanWorkspaceURL
+          GRAFANA_WORKSPACE_ID: !GetAtt GrafanaPrometheus.Outputs.GrafanaWorkspaceId
+          GRAFANA_WORKSPACE_URL: !GetAtt GrafanaPrometheus.Outputs.GrafanaWorkspaceURL
       Handler: create_ml_dashboards.lambda_handler
       Runtime: python3.13
       Role: !GetAtt GrafanaLambdaRole.Arn

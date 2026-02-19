@@ -167,7 +167,7 @@ export AMP_ENDPOINT=$(aws cloudformation describe-stacks \
 
 export GRAFANA_WORKSPACE_URL=$(aws cloudformation describe-stacks \
   --stack-name $STACK_NAME \
-  --query 'Stacks[0].Outputs[?OutputKey==`GrafanWorkspaceURL`].OutputValue' \
+  --query 'Stacks[0].Outputs[?OutputKey==`GrafanaWorkspaceURL`].OutputValue' \
   --output text \
   --region $AWS_REGION_AMGP)
 
