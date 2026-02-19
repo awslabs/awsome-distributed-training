@@ -81,7 +81,7 @@ For this example, we'll be using the [allenai/c4](https://huggingface.co/dataset
 
 **For this dataset, we will need a Hugging Face access token**. First, create a [Hugging Face account](https://huggingface.co/welcome). Then [generate your access token with read permissions](https://huggingface.co/docs/hub/en/security-tokens). We will use this token and set it in our environment variables in the next step.
 
-If you'd like to instead use your own dataset, you can do so by [formatting it as a HuggingFace dataset](https://huggingface.co/docs/datasets/create_dataset), and passing its location to the `--dataset_path` argument.
+If you'd like to instead use your own dataset, you can do so by [formatting it as a HuggingFace dataset](https://huggingface.co/docs/datasets/create_dataset), and passing its location to the `--dataset` argument.
 
 ## 4. Launch Llama 3.1 8B training job
 
@@ -129,7 +129,7 @@ EFA level variables are available for adjustment in fsdp.yaml-template
 Keep FI_* values commented out for non-efa instances (G5, G4d, P3) or P5
 Uncomment FI_* values for P4d instances
 
-You can also adjust the training parameters in `TRAINING_ARGS` (for example, to train Llama 3.1 70B). Additional parameters can be found in `model/arguments.py`. Note that we use the same directory for both `--checkpoint_dir` and `--resume_from_checkpoint`. If there are multiple checkpoints, `--resume_from_checkpoint` will automatically select the most recent one. This way if our training is interupted for any reason, it will automatically pick up the most recent checkpoint.
+You can also adjust the training parameters in `TRAINING_ARGS` (for example, to train Llama 3.1 70B). Additional parameters can be found in `src/model_utils/arguments.py`. Note that we use the same directory for both `--checkpoint_dir` and `--resume_from_checkpoint`. If there are multiple checkpoints, `--resume_from_checkpoint` will automatically select the most recent one. This way if our training is interupted for any reason, it will automatically pick up the most recent checkpoint.
 
 ## 5. Monitor training job
 

@@ -52,7 +52,7 @@ For this example, we'll be using the [allenai/c4](https://huggingface.co/dataset
 export HF_TOKEN=<YOUR HF ACCESS TOKEN>
 ```
 
-If you'd like to instead use your own dataset, you can do so by [formatting it as a HuggingFace dataset](https://huggingface.co/docs/datasets/create_dataset), and passing its location to the `--dataset_path` argument.
+If you'd like to instead use your own dataset, you can do so by [formatting it as a HuggingFace dataset](https://huggingface.co/docs/datasets/create_dataset), and passing its location to the `--dataset` argument.
 
 ## Launch Training
 
@@ -69,7 +69,7 @@ If you are using non-EFA enabled instances, such as G4dn, or single GPU g5 nodes
 
 Also, under `User Variables` make sure to adjust `GPUS_PER_NODE` to match the number of GPUs on your instance type (8 for P4d(e)/P5/P6-B200), 4 for G5.12xlarge, 1 for G5.xlarge).
 
-You can also adjust the training parameters in `TRAINING_ARGS` (for example, to increase batch size). Additional parameters can be found in `model/arguments.py`. Note that we use the same directory for both `--checkpoint_dir` and `--resume_from_checkpoint`. If there are multiple checkpoints, `--resume_from_checkpoint` will automatically select the most recent one. This way if our training is interupted for any reason, it will automatically pick up the most recent checkpoint.
+You can also adjust the training parameters in `TRAINING_ARGS` (for example, to increase batch size). Additional parameters can be found in `src/model_utils/arguments.py`. Note that we use the same directory for both `--checkpoint_dir` and `--resume_from_checkpoint`. If there are multiple checkpoints, `--resume_from_checkpoint` will automatically select the most recent one. This way if our training is interupted for any reason, it will automatically pick up the most recent checkpoint.
 
 ### Llama 3.1 8B training
 
@@ -158,7 +158,7 @@ Then you will need to create a [user access token](https://huggingface.co/docs/h
 Once created you will need to define it in your environment:
 
 ```bash
-export HF_TOKEN=>YOUR TOKEN>
+export HF_TOKEN=<YOUR TOKEN>
 ```
 
 You are now ready to launch your training for Mathstral 7B with the following command:
