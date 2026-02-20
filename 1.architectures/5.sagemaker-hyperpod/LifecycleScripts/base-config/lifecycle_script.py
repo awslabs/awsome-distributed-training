@@ -226,6 +226,17 @@ def main(args):
                 ExecuteBashScript("./utils/fsx_ubuntu.sh").run("1")
             else:
                 ExecuteBashScript("./utils/fsx_ubuntu.sh").run("0")
+        else:
+            # No FSx DNS names provided in provisioning params.
+            # Auto-detect existing FSx mounts (OpenZFS/Lustre) and setup home directories if present.
+            # If no mounts are found, the script logs and exits silently.
+            print("[INFO] No FSx DNS names (fsx_dns_name/fsx_mountname) or OpenZFS DNS name provided in provisioning parameters.")
+            print("[INFO] Running fsx_auto_detect.sh to check for existing FSx mounts on this instance...")
+            try:
+                ExecuteBashScript("./utils/fsx_auto_detect.sh").run()
+                print("[INFO] fsx_auto_detect.sh completed successfully.")
+            except Exception as e:
+                print(f"[WARN] fsx_auto_detect.sh failed: {e}. Continuing without mount-based home directory setup.")
 
         ExecuteBashScript("./start_slurm.sh").run(node_type, ",".join(controllers))
         
