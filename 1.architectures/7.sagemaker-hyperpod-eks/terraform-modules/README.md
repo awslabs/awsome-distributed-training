@@ -9,7 +9,7 @@ The diagram below depicts the Terraform modules that have been bundled into a si
 ## Get the Modules
 Clone the AWSome Distributed Training repository and navigate to the terraform-modules directory:
 ```bash
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/1.architectures/7.sagemaker-hyperpod-eks/terraform-modules/hyperpod-eks-tf
 ```
 

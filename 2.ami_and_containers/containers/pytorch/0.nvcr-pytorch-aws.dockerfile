@@ -29,7 +29,7 @@ ENV AWS_OFI_NCCL_VERSION=1.12.1-aws
 ENV NCCL_TESTS_VERSION=master
 
 ## Uncomment below when this Dockerfile builds a container image with efa-installer<1.29.1 and
-# nccl>=2.19.0. See https://github.com/aws-samples/awsome-distributed-training/tree/main/1.architectures/efa-cheatsheet.md
+# nccl>=2.19.0. See https://github.com/awslabs/awsome-distributed-training/tree/main/1.architectures/efa-cheatsheet.md
 #ENV FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 
 RUN apt-get update -y

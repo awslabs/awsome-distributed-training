@@ -7,7 +7,7 @@
 2. Next you can deploy the AWS Batch template included in this PR, where `cr-1234567890` is the id of your capacity block and `aws-batch-vpc` is the name of the vpc stack you created above.
 
 ```bash
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/1.architectures/3.aws-batch
 aws cloudformation create-stack --stack-name aws-batch-p5 \
                                 --template-body file://0.aws-batch-distributed-training-p5.yaml \

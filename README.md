@@ -94,8 +94,8 @@ Micro-benchmarks for evaluating network and communication performance are under 
 
 Thanks to all the contributors for building, reviewing and testing.
 
-[![Contributors](https://contrib.rocks/image?repo=aws-samples/awsome-distributed-training)](https://github.com/aws-samples/awsome-distributed-training/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=awslabs/awsome-distributed-training)](https://github.com/awslabs/awsome-distributed-training/graphs/contributors)
 
 ## 7. Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=aws-samples/awsome-distributed-training&type=Date)](https://star-history.com/#aws-samples/awsome-distributed-training&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=awslabs/awsome-distributed-training&type=Date)](https://star-history.com/#awslabs/awsome-distributed-training&Date)

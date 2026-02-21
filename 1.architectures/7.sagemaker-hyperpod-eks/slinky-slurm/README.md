@@ -47,7 +47,7 @@ Deploy the [HyperPod EKS CloudFormation Stack](https://catalog.workshops.aws/sag
 
 #### <u>Clone the AWSome Distributed Training Repo</u> 
 ```
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cp -r awsome-distributed-training/1.architectures/7.sagemaker-hyperpod-eks/slinky-slurm .
 cd slinky-slurm 
 ```
@@ -68,7 +68,7 @@ Curl the `main-stack.yaml` template and issue an `aws cloudformation create-stac
 ```
 export AWS_REGION=<your-region-here> # e.g. us-west-2
 
-curl -O https://raw.githubusercontent.com/aws-samples/awsome-distributed-training/refs/heads/main/1.architectures/7.sagemaker-hyperpod-eks/cfn-templates/nested-stacks/main-stack.yaml 
+curl -O https://raw.githubusercontent.com/awslabs/awsome-distributed-training/refs/heads/main/1.architectures/7.sagemaker-hyperpod-eks/cfn-templates/nested-stacks/main-stack.yaml 
 
 aws cloudformation create-stack \
 --stack-name  hp-eks-slinky-stack \
@@ -83,7 +83,7 @@ export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output tex
 
 export STACK_ID=hp-eks-slinky-stack
 
-curl -O https://raw.githubusercontent.com/aws-samples/awsome-distributed-training/refs/heads/main/1.architectures/7.sagemaker-hyperpod-eks/create_config.sh 
+curl -O https://raw.githubusercontent.com/awslabs/awsome-distributed-training/refs/heads/main/1.architectures/7.sagemaker-hyperpod-eks/create_config.sh 
 
 chmod +x create_config.sh
 
@@ -866,7 +866,7 @@ apt install -y vim
 vim --version
 
 cd /fsx
-git clone https://github.com/aws-samples/awsome-distributed-training/
+git clone https://github.com/awslabs/awsome-distributed-training/
 cd awsome-distributed-training/3.test_cases/pytorch/FSDP/slurm
 
 mkdir -p checkpoints

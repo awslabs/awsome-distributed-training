@@ -21,7 +21,7 @@ The suite provides two operational modes: **lightweight checks** for regular use
 
 ```bash
 # Clone the repository
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/4.validation_and_observability/2.gpu-cluster-healthcheck
 
 # Make all scripts executable

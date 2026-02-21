@@ -59,7 +59,7 @@ export DATASET_PATH=/fsx/
 
 ```bash
 cd /apps/
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cp -r /apps/awsome-distributed-training/3.test_cases/14.bionemo/* ./apps/
 ```
 

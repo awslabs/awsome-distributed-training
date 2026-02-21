@@ -30,7 +30,7 @@ The example was tested on versions:
 
 ### Clone this repo
 ```bash
-git clone https://github.com/aws-samples/awsome-distributed-training.git 
+git clone https://github.com/awslabs/awsome-distributed-training.git 
 cd awsome-distributed-training/3.test_cases/pytorch/verl/kubernetes/rlvr
 ```
 

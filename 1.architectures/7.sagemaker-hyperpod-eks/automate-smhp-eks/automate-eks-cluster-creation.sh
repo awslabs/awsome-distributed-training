@@ -297,14 +297,14 @@ clone_adt() {
             echo -e "${YELLOW}Removing existing directory...${NC}"
             rm -rf "$REPO_NAME"
             echo -e "${BLUE}Cloning repository...${NC}"
-            git clone --depth=1 https://github.com/aws-samples/awsome-distributed-training/
+            git clone --depth=1 https://github.com/awslabs/awsome-distributed-training/
             echo -e "${GREEN}✅ Repository cloned successfully${NC}"
         else
             echo -e "${BLUE}Using existing directory...${NC}"
         fi
     else
         echo -e "${BLUE}Cloning repository $REPO_NAME...${NC}"
-        git clone --depth=1 https://github.com/aws-samples/awsome-distributed-training/
+        git clone --depth=1 https://github.com/awslabs/awsome-distributed-training/
         echo -e "${GREEN}✅ Repository cloned successfully${NC}"
     fi
 }

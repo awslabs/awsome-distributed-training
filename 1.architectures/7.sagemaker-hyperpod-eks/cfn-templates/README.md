@@ -202,7 +202,7 @@ Note: If you opt to disable the S3BucketStack, please use the S3BucketName param
 
 <details>
 <summary>LifeCycleScriptStack</summary>
-This stack deploys an AWS Lambda function that creates a [default lifecycle script](https://github.com/aws-samples/awsome-distributed-training/blob/main/1.architectures/7.sagemaker-hyperpod-eks/LifecycleScripts/base-config/on_create.sh) and stores it in the referenced S3 bucket.
+This stack deploys an AWS Lambda function that creates a [default lifecycle script](https://github.com/awslabs/awsome-distributed-training/blob/main/1.architectures/7.sagemaker-hyperpod-eks/LifecycleScripts/base-config/on_create.sh) and stores it in the referenced S3 bucket.
 
 <sp></sp>
 

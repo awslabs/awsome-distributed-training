@@ -27,7 +27,7 @@ arn:aws:eks:us-west-1:xxxxxxxxxxxx:cluster/xxx-eks-cluster
 Clone this repo. 
 
 ```
-git clone https://github.com/aws-samples/awsome-distributed-training/
+git clone https://github.com/awslabs/awsome-distributed-training/
 cd awsome-distributed-training/3.test_cases/pytorch/FSDP/kubernetes
 ```
 
@@ -54,7 +54,7 @@ docker build -f Dockerfile -t ${REGISTRY}fsdp:pytorch2.7.1 .
 popd
 ```
 
-The PyTorch FSDP container uses the [nccl-tests](https://github.com/aws-samples/awsome-distributed-training/blob/main/micro-benchmarks/nccl-tests/nccl-tests.Dockerfile) container as base.
+The PyTorch FSDP container uses the [nccl-tests](https://github.com/awslabs/awsome-distributed-training/blob/main/micro-benchmarks/nccl-tests/nccl-tests.Dockerfile) container as base.
 
 ## 2. Push container image to Amazon ECR
 

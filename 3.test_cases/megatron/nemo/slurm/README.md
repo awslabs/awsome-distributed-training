@@ -19,7 +19,7 @@ Make sure that your current directory is under a shared filesystem such as `/fsx
 
   ```bash
   cd ~
-  git clone https://github.com/aws-samples/awsome-distributed-training/
+  git clone https://github.com/awslabs/awsome-distributed-training/
   cd awsome-distributed-training/3.test_cases/22.nemo-run/slurm
   ```
 

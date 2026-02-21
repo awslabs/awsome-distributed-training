@@ -69,8 +69,8 @@ This implementation leverages Kubernetes on AWS infrastructure to orchestrate di
 Before you begin, ensure you have the following:
 
 - **Kubernetes Cluster**: An EKS cluster or SageMaker HyperPod EKS cluster
-  - For SageMaker HyperPod EKS: Follow [this workshop](https://catalog.workshops.aws/sagemaker-hyperpod-eks/en-US/00-setup) or [this repository](https://github.com/aws-samples/awsome-distributed-training/tree/main/1.architectures/7.sagemaker-hyperpod-eks)
-  - For standard EKS: Follow [these instructions](https://github.com/aws-samples/awsome-distributed-training/tree/main/1.architectures/4.amazon-eks)
+  - For SageMaker HyperPod EKS: Follow [this workshop](https://catalog.workshops.aws/sagemaker-hyperpod-eks/en-US/00-setup) or [this repository](https://github.com/awslabs/awsome-distributed-training/tree/main/1.architectures/7.sagemaker-hyperpod-eks)
+  - For standard EKS: Follow [these instructions](https://github.com/awslabs/awsome-distributed-training/tree/main/1.architectures/4.amazon-eks)
     
     **Additional Setup for Standard EKS (Non-HyperPod):**
     

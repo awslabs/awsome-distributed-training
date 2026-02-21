@@ -97,8 +97,8 @@ The file will be stored in the `/fsxl` directory.
 
 ### Slurm with container
 
-clone the awesome-distributed-training repo on your head node
-`git clone https://github.com/aws-samples/awesome-distributed-training.git`
+clone the awsome-distributed-training repo on your head node
+`git clone https://github.com/awslabs/awsome-distributed-training.git`
 
 
 Navigate to the topology-aware-nccl-tests directory:

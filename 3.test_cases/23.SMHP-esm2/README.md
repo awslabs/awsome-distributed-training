@@ -10,7 +10,7 @@
 ESM-2 is a powerful pLM. We will demonstrate how to use QLoRA to fine-tune ESM-2 on g5.24xlarge instances. We will use ESM-2 to predict [subcellular localization](https://academic.oup.com/nar/article/50/W1/W228/6576357?login=false). Understanding where proteins appear in cells can help us understand their role in disease and find new drug targets.
 
 ## 0. Prerequisites
-You will need to set up a SageMaker Hyperpod cluster using 2 g5.24xlarge instances with a shared parallel filesystem such as [Amazon FSx for Lustre](https://docs.aws.amazon.com/fsx/latest/LustreGuide/getting-started.html).  See the sagemaker-hyperpod section in the [Sagemaker Hyperpod](https://github.com/aws-samples/awsome-distributed-training/tree/main/1.architectures/5.sagemaker-hyperpod) folder for setup instructions.  
+You will need to set up a SageMaker Hyperpod cluster using 2 g5.24xlarge instances with a shared parallel filesystem such as [Amazon FSx for Lustre](https://docs.aws.amazon.com/fsx/latest/LustreGuide/getting-started.html).  See the sagemaker-hyperpod section in the [Sagemaker Hyperpod](https://github.com/awslabs/awsome-distributed-training/tree/main/1.architectures/5.sagemaker-hyperpod) folder for setup instructions.  
 
 ## 1. Install conda
 

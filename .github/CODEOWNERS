@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/about-codeowners/
 
 
-# Enforces that a member of the @aws-samples/sagemaker-hyperpod-dev team for HyperPod lifecycle scripts
+# Enforces that a member of the @awslabs/sagemaker-hyperpod-dev team for HyperPod lifecycle scripts
 # They must approve any PRs that modify files under either base-config directory,
 # including all nested subdirectories and files.
 /1.architectures/5.sagemaker-hyperpod/LifecycleScripts/base-config     @awslabs/hyperpod-lcs-dev

@@ -27,7 +27,7 @@ This demo gif showcases the step-by-step process of creating and setting up a Sa
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/aws-samples/awsome-distributed-training.git
+   git clone https://github.com/awslabs/awsome-distributed-training.git
    cd 1.architectures/5.sagemaker-hyperpod/automate-smhp-slurm
    ```
 

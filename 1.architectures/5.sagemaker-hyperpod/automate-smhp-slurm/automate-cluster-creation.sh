@@ -114,14 +114,14 @@ clone_adt() {
             echo -e "${YELLOW}Removing existing directory...${NC}"
             rm -rf "$REPO_NAME"
             echo -e "${BLUE}Cloning repository...${NC}"
-            git clone --depth=1 https://github.com/aws-samples/awsome-distributed-training/
+            git clone --depth=1 https://github.com/awslabs/awsome-distributed-training/
             echo -e "${GREEN}✅ Repository cloned successfully${NC}"
         else
             echo -e "${BLUE}Using existing directory...${NC}"
         fi
     else
         echo -e "${BLUE}Cloning repository $REPO_NAME...${NC}"
-        git clone --depth=1 https://github.com/aws-samples/awsome-distributed-training/
+        git clone --depth=1 https://github.com/awslabs/awsome-distributed-training/
         echo -e "${GREEN}✅ Repository cloned successfully${NC}"
     fi
 }
@@ -251,7 +251,7 @@ multi_headnode() {
             
             if [[ $error_output == *"EntityAlreadyExists"* ]]; then
                 echo -e "\n${YELLOW}If the error you received is that the policy already exists, you can either:${NC}" 
-                echo -e "\n${GREEN}     1. Continue the script with the existing policy (make sure the permissions match the ones in https://github.com/aws-samples/awsome-distributed-training/blob/main/1.architectures/5.sagemaker-hyperpod/1.AmazonSageMakerClustersExecutionRolePolicy.json) and manually attach it to your role ${SLURM_EXECUTION_ROLE}, or${NC}" 
+                echo -e "\n${GREEN}     1. Continue the script with the existing policy (make sure the permissions match the ones in https://github.com/awslabs/awsome-distributed-training/blob/main/1.architectures/5.sagemaker-hyperpod/1.AmazonSageMakerClustersExecutionRolePolicy.json) and manually attach it to your role ${SLURM_EXECUTION_ROLE}, or${NC}" 
                 echo -e "\n${GREEN}     2. You can create a new policy with a name different than 'AmazonSageMakerExecutionPolicy' manually and attach it to your 'AmazonSageMakerExecutionRole' with the following command. Once you do that, you can continue with the rest of the script:${NC}"
 
                 echo -e "\n${YELLOW} Creating an IAM policy (required for option 2 above)${NC}"
@@ -885,7 +885,7 @@ validate_cluster_config() {
     echo "Validating your cluster configuration..."
     # TODO: MAKE SURE PACKAGES ARE INSTALLED HERE!!
 
-    curl -O https://raw.githubusercontent.com/aws-samples/awsome-distributed-training/main/1.architectures/5.sagemaker-hyperpod/validate-config.py
+    curl -O https://raw.githubusercontent.com/awslabs/awsome-distributed-training/main/1.architectures/5.sagemaker-hyperpod/validate-config.py
 
     # check config for known issues
     python3 validate-config.py --cluster-config cluster-config.json --provisioning-parameters provisioning_parameters.json --region $AWS_REGION
