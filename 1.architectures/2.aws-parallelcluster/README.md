@@ -55,7 +55,7 @@ These tools are essential for following the deployment steps in this guide and m
 First, clone the repository and move to this directory:
 
 ```bash
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/1.architectures/2.aws-parallelcluster
 ```
 
@@ -65,7 +65,7 @@ Then create a directory under home directory to store cluster config files:
 # For example
 export AWS_REGION=ap-northeast-1
 export CLUSTER_NAME=ml-cluster
-export PCLUSTER_VERSION=3.13.1
+export PCLUSTER_VERSION=3.14.2
 export CONFIG_DIR="${HOME}/${CLUSTER_NAME}_${AWS_REGION}_${PCLUSTER_VERSION}"
 
 mkdir -p ${CONFIG_DIR}
@@ -222,7 +222,7 @@ Please follow the steps below to deploy your resources:
 
 1. Click on this link to deploy to CloudFormation:
 
-[<kbd> <br> 1-Click Deploy 🚀 <br> </kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-training.s3.amazonaws.com/templates/parallelcluster-prerequisites.yaml&stackName=parallelcluster-prerequisites)
+[<kbd> <br> 1-Click Deploy 🚀 <br> </kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-training.s3.amazonaws.com/templates/parallelcluster-prerequisites.yaml&stackName=parallelcluster-prerequisites)
 
 > [!IMPORTANT]
 > When opening the link, you must specify the region and availability zone where your compute resources are located. Be sure to select the correct region and fill out the "Availability Zone configuration for the subnets" field, when you create the stack.
@@ -230,7 +230,7 @@ Please follow the steps below to deploy your resources:
 
 > [!NOTE]
 > The above CloudFormation stack uses FSx for Lustre `PERSISTENT_2` deployment type by default. If your selected availability zone doesn't support `PERSISTENT_2` or you specifically need to use `PERSISTENT_1` deployment type, please use the link below instead:
-> [<kbd> <br> 1-Click Deploy 🚀 <br> </kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-training.s3.amazonaws.com/templates/parallelcluster-prerequisites-p1.yaml&stackName=parallelcluster-prerequisites)
+> [<kbd> <br> 1-Click Deploy 🚀 <br> </kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-training.s3.amazonaws.com/templates/parallelcluster-prerequisites-p1.yaml&stackName=parallelcluster-prerequisites)
 
 ![parallelcluster-prerequisites-cfn](../../0.docs/parallelcluster-prerequisites-cfn.png)
 
@@ -333,7 +333,7 @@ cat  ${CONFIG_DIR}/config.yaml
 # Example values - these will vary by environment
 CLUSTER_NAME: ml-cluster
 AWS_REGION: eu-west-2
-PCLUSTER_VERSION: 3.13.1
+PCLUSTER_VERSION: 3.14.2
 CAPACITY_RESERVATION_ID: cr-XXXXXXXXXXXXXXXXX
 AZ: eu-west-2c
 NUM_INSTANCES: "16"
@@ -410,7 +410,7 @@ You should see output similar to:
     "cloudformationStackStatus": "CREATE_IN_PROGRESS",
     "cloudformationStackArn": "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/ml-cluster/abcd1234-...",
     "region": "ap-northeast-1",
-    "version": "3.13.0",
+    "version": "3.14.2",
     "clusterStatus": "CREATE_IN_PROGRESS",
     "scheduler": {
       "type": "slurm"
@@ -484,4 +484,3 @@ It will show output like follows:
 ## 8. References
 
 * [AWS ParallelCluster wiki](https://github.com/aws/aws-parallelcluster/wiki)
-
