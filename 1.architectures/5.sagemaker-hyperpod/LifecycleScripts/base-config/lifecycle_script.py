@@ -270,11 +270,6 @@ def main(args):
             ExecuteBashScript("./utils/install_docker.sh").run()
             ExecuteBashScript("./utils/install_enroot_pyxis.sh").run(node_type)
 
-        # Update Neuron SDK version to the version defined in update_neuron_sdk.sh
-        if Config.enable_update_neuron_sdk:
-            if node_type == SlurmNodeType.COMPUTE_NODE:
-                ExecuteBashScript("./utils/update_neuron_sdk.sh").run()
-        
         # Install and configure SSSD for ActiveDirectory/LDAP integration
         if Config.enable_sssd:
             subprocess.run(["python3", "-u", "setup_sssd.py", "--node-type", node_type], check=True)
