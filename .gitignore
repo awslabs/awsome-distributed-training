@@ -1,5 +1,5 @@
 .env.unversioned
-
+*.ipynb
 *.out
 *.err
 *.log
