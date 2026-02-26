@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 # Health-check orchestrator for Slurm clusters.
 # Runs on a single node as the Main slurm batch job. 
 # Dispatches one worker job per target node to execute health-check test, 

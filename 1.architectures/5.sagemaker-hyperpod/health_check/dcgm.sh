@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 # DCGM diagnostic health check for a single node.
 # Stdout contract: HEALTH_CHECK_RESULT:<hostname>:<Passed|Failed|Skipped>:<none|reboot|replace>:<reason>
 # "Skipped" = test itself didn't run (node marked Skipped, no remediation applied).
@@ -104,8 +106,9 @@ elif [[ $dcgmi_rc -ne 0 ]]; then
 fi
 
 # --- Parse DCGM JSON results ---
-# Severity-based remediation: ISOLATE→replace
-# RESET/UNKNOWN/NONE/MONITOR/TRIAGE/CONFIG→no hardware remediation (not high-confidence per NVIDIA docs).
+# Severity-based remediation: ISOLATE→replace, RESET→reboot.
+# All other severities (empty/non-numeric, UNKNOWN, NONE, MONITOR, TRIAGE, CONFIG)
+# → no automatic hardware remediation; reported as failures for operator triage.
 # "replace" takes precedence over "reboot".
 # Outputs two lines: first line is remediation action, second line is reason string.
 parse_dcgm_results() {
@@ -156,12 +159,16 @@ parse_dcgm_results() {
                     failure_reasons="$failure_msg"
                 fi
 
-                # Only DCGM_ERROR_ISOLATE has high-confidence NVIDIA guidance that the GPU
-                # is bad and needs replacement.  All other severities (including empty/
-                # non-numeric, RESET, UNKNOWN, NONE, MONITOR, TRIAGE, CONFIG) are reported
-                # as failures but left for operator triage — no automatic reboot/replace.
-                if [[ -n "$severity" && "$severity" =~ ^[0-9]+$ ]] && (( severity == DCGM_ERROR_ISOLATE )); then
-                    replace_required=true
+                # ISOLATE → replace (GPU is bad per NVIDIA guidance).
+                # RESET   → reboot (GPU needs reset, achieved via node reboot).
+                # All other severities (empty/non-numeric, UNKNOWN, NONE, MONITOR,
+                # TRIAGE, CONFIG) are reported as failures but left for operator triage.
+                if [[ -n "$severity" && "$severity" =~ ^[0-9]+$ ]]; then
+                    if (( severity == DCGM_ERROR_ISOLATE )); then
+                        replace_required=true
+                    elif (( severity == DCGM_ERROR_RESET )); then
+                        reboot_required=true
+                    fi
                 fi
             done <<< "$results"
         done <<< "$tests_json"

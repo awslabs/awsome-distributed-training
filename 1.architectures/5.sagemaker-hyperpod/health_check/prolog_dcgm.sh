@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 # Slurm Prolog: DCGM GPU health check before job execution.
 # Pass → job proceeds. Fail → behavior controlled by DRAIN_ON_FAILURE.
 # Recent passes are cached to skip redundant checks.
@@ -10,7 +12,7 @@ readonly DCGM_LEVEL=2                        # DCGM diagnostic level (2-4)
 readonly CACHE_TTL_HOURS=1                   # If a cached result exists and is less than CACHE_TTL_HOURS hours old, skip the prolog check. Set to 0 to disable caching entirely.
 readonly UPDATE_FEATURES=true                # Update Slurm node features
 readonly DRAIN_ON_FAILURE=false              # If true, exit 1 on failure so Slurm drains the node and requeues the job. If false, only update the feature to Failed and let the job proceed.
-readonly PROLOG_BASE_DIR="/fsx/ubuntu/health_check_prolog"
+readonly PROLOG_BASE_DIR="${HC_PROLOG_BASE_DIR:-/fsx/health_check_prolog}"
 readonly LOG_DIR="${PROLOG_BASE_DIR}/logs"
 readonly CACHE_DIR="${PROLOG_BASE_DIR}/cache"
 readonly FEATURE_PREFIX="HealthCheck"
@@ -124,7 +126,8 @@ main() {
     unset CUDA_VISIBLE_DEVICES
 
     local output="" dcgm_rc=0
-    output=$(bash "$DCGM_SCRIPT" --level "$DCGM_LEVEL" 2>"$log_file") || dcgm_rc=$?
+    export HC_TEST_PARAMS='{"level":'"$DCGM_LEVEL"'}'
+    output=$(bash "$DCGM_SCRIPT" 2>"$log_file") || dcgm_rc=$?
 
     local result_line
     result_line=$(echo "$output" | grep "^HEALTH_CHECK_RESULT:" || true)

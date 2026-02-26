@@ -1,27 +1,6 @@
+<!-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. -->
+<!-- SPDX-License-Identifier: MIT-0 -->
 # Automated Customizable Health Check for Amazon SageMaker HyperPod SLURM Clusters
-
-
-Open Questions on Product
-
-
-1. We are unsure about wording and naming, you might see different wording in this doc (Leader node, orchestrator, worker job, child job. we haven’t unify them), they refers to the similar thing, prefer Product team to provide guidance as it will impact positions of this feature.
-2. Need opinion on summary format of health check. It’s the customer facing log which delivers final health check results to customer.
-3. For child jobs, customer might want to run somthing like nccl tests which takes multiple node as input, we can also support node grouping when triggering sub jobs. Currently we make default 
-4. For Prolog script, do we want to trigger remediation if prolog detected failure? 
-5. Need opinion on remediation logic on DCGM tests
-
-
-The Health Check Orchestrator is a flexible framework that automates health checks across your HyperPod Slurm cluster. It operates as a Slurm job, spawning child Slurm jobs on targeted worker nodes to run health check tests. Based on the collected results, it updates Slurm node features and automatically triggers remediation when health issues are identified.
-
-A DCGM diagnostic script is provided as a reference implementation; however, the orchestrator is compatible with any script that adheres to the simple output contract. 
-
-Additionally, a prolog script is included to configure DCGM diagnostics as a Slurm prolog, enabling automatic health checks before each job begins.
-
-
-
-[TOC in markdown] (Quip support support table of content)
-
-
 
 ## **Key Capabilities**
 
@@ -74,8 +53,6 @@ Before getting started, ensure:
 3. **Shared Filesystem** — A shared filesystem (e.g., `/fsx`) is accessible from all nodes for storing scripts and health check results.
 4. **Health Check Script** — You have a custom health check script ready, or you can use the provided `dcgm.sh` script for GPU diagnostics.
 
-
-
 ## Quick Start
 
 ### Step 1: Copy Scripts to Shared Storage
@@ -83,19 +60,16 @@ Before getting started, ensure:
 Place the orchestrator and your health check script on shared storage:
 
 ```
-`cd ``/``fsx``/``ubuntu`
-`git clone https``:``//github.com/awslabs/awsome-distributed-training.git `
-`cd awsome``-``distributed``-``training``/``1.architectures``/``5.sagemaker``-``hyperpod``/``tools``/``health``-``check`
-`chmod +x health_check_orchestrator.sh 
-chmod +x dcgm.sh`
+cd /fsx/ubuntu
+git clone https://github.com/awslabs/awsome-distributed-training.git
+cd awsome-distributed-training/1.architectures/5.sagemaker-hyperpod/health_check
+chmod +x health_check_orchestrator.sh dcgm.sh
 ```
-
-
 
 ### Step 2: Submit the Health Check Job
 
 ```
-sbatch --output=/fsx/ubuntu/health-check-results/health-check-orchestrator-%x-%j.out health_check_orchestrator.sh \
+sbatch --output=/fsx/ubuntu/health-check-results/leader_%j.log health_check_orchestrator.sh \
 --target-partition ml.g5.xlarge \
 --output-dir /fsx/ubuntu/health-check-results \
 --test-script /fsx/ubuntu/dcgm.sh \
@@ -108,7 +82,7 @@ What this command does:
 |---	|---	|---	|
 |`--target-partition`	|`ml.g5.xlarge`	|Test all available nodes in the `ml.g5.xlarge` partition	|
 |`--output-dir`	|`/fsx/ubuntu/health-check-results`	|Save all logs and results of child slurm jobs to this directory	|
-|`--output`	|`/fsx/ubuntu/health-check-results/health-check-orchestrator-%x-%j.out`	|Instruct Slurm to connect the batch script's standard error directly to file `health-check-orchestrator-<jobname>-<jobid>.out`	|
+|`--output`	|`/fsx/ubuntu/health-check-results/leader_%j.log`	|Instruct Slurm to connect the batch script's standard error directly to file `leader_<jobid>.out`	|
 |`--test-script`	|`dcgm.sh`	|Use `dcgm.sh` as the health-check script on each target compute node	|
 |`--test-script-args`	|`'{"level": 2}'`	|Run DCGM Level 2 diagnostics (quick check)	|
 
@@ -140,9 +114,9 @@ ls /fsx/ubuntu/health-check-results/
 
 If the  health check orchestra job completed, you’ll find
 
-* `health-check-orchestrator-health_check_main_job-<job-id>.log`: The orchestrator's main log with the overall summary.
+* `leader_<job-id>.log`: The orchestrator's main log with the overall summary.
 * `worker_<node-name>_<timestamp>.log`: Output from the worker job running on each node.
-* `health_check_summary_<job-id>_<timestamp>.txt`: One-line-per-node results.
+* `health_check_summary_<job-id>_<timestamp>.log`: Summary of nodes' health check results.
     
 
 Open the summary log to see the summary of test results on target compute nodes:
