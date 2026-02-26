@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# network-policy-patch.yaml
+#
+# Optional: Customize NVCF network policies for the HyperPod EKS cluster.
+#
+# By default, NVCF installs network policies that may not be enforced by
+# AWS VPC CNI. If you have enabled VPC CNI NetworkPolicy support (v1.14+),
+# you can use this ConfigMap to customize the default policies.
+#
+# Apply AFTER NVCA installation:
+#   kubectl apply -f network-policy-patch.yaml
+#
+# See: https://docs.nvidia.com/cloud-functions/user-guide/latest/cloud-function/cluster-management.html
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvcf-network-policy-patch
+  namespace: nvca-operator
+  labels:
+    nvca.nvcf.nvidia.io/operator-kustomization: enabled
+data:
+  patches: |
+    - target:
+        group: ""
+        version: v1
+        kind: ConfigMap
+        name: nvca-namespace-networkpolicies
+      patch: |-
+        - op: replace
+          path: /data/allow-egress-internet-no-internal-no-api
+          value: |
+            apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: allow-egress-internet-no-internal-no-api
+              labels:
+                app.kubernetes.io/name: nvca
+                app.kubernetes.io/instance: nvca
+                app.kubernetes.io/version: "1.0"
+                app.kubernetes.io/managed-by: nvca-operator
+            spec:
+              podSelector: {}
+              policyTypes:
+                - Egress
+              egress:
+                # Allow DNS resolution via kube-dns
+                - to:
+                  - namespaceSelector: {}
+                    podSelector:
+                      matchLabels:
+                        k8s-app: kube-dns
+                # Allow outbound to NVIDIA control plane and registries
+                # Block common internal CIDRs but allow AWS service endpoints
+                - to:
+                  - ipBlock:
+                      cidr: 0.0.0.0/0
+                      except:
+                        - 10.0.0.0/8
+                        - 172.16.0.0/12
+                        - 192.168.0.0/16
+                # Allow outbound to VPC CIDR (for AWS service endpoints via PrivateLink)
+                - to:
+                  - ipBlock:
+                      cidr: 10.0.0.0/16
+                  ports:
+                    - port: 443
+                      protocol: TCP
