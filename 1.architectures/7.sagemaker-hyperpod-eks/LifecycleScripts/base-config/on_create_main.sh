@@ -138,8 +138,10 @@ fi
 
 
 # ===== EFA FSx LUSTRE CLIENT SETUP =====
+# NOTE: This function runs in a subshell to prevent cd from leaking into the caller's working directory.
+# The EXIT trap ensures cleanup on all exit paths (success, error, or signal).
 
-setup_efa_fsx_client() {
+setup_efa_fsx_client() (
     logger "[INFO] Starting EFA FSx client setup"
 
     # Step 1: OS compatibility check
@@ -178,8 +180,13 @@ setup_efa_fsx_client() {
 
     logger "[INFO] EFA detected - configuring for FSx Lustre"
 
-    # Step 3: Download and setup
-    cd /tmp || { logger "[ERROR] Cannot access /tmp directory"; return 1; }
+    # Step 3: Download and setup in isolated temp directory
+    WORKDIR=$(mktemp -d /tmp/efa-fsx-setup.XXXXXX) || { logger "[ERROR] Cannot create temp directory"; return 1; }
+    trap 'rm -rf "$WORKDIR"' EXIT
+    cd "$WORKDIR" || {
+        logger "[ERROR] Cannot enter temp directory"
+        return 1
+    }
 
     logger "[INFO] Downloading EFA FSx client setup..."
     if ! curl --fail --silent --show-error --max-time 30 -o efa-setup.zip \
@@ -191,13 +198,11 @@ setup_efa_fsx_client() {
     logger "[INFO] Extracting setup files..."
     if ! unzip -q efa-setup.zip; then
         logger "[ERROR] Extract failed"
-        rm -f efa-setup.zip
         return 1
     fi
 
     if [[ ! -f "configure-efa-fsx-lustre-client/setup.sh" ]]; then
         logger "[ERROR] Setup script not found in package"
-        rm -rf configure-efa-fsx-lustre-client* efa-setup.zip
         return 1
     fi
 
@@ -208,14 +213,12 @@ setup_efa_fsx_client() {
         logger "[SUCCESS] EFA FSx client configured successfully"
     else
         logger "[ERROR] EFA FSx client setup failed"
-        rm -rf configure-efa-fsx-lustre-client* efa-setup.zip
         return 1
     fi
 
-    # Cleanup
-    rm -rf configure-efa-fsx-lustre-client* efa-setup.zip
+    # Cleanup handled by EXIT trap in Step 3
     return 0
-}
+)
 
 # Load Lustre modules
 load_lustre_modules() {
