@@ -13,15 +13,6 @@ cd 3.test_cases/pytorch/trl
 docker build -t trl-base:latest .
 ```
 
-### HyperPod EKS
-
-For running on Amazon SageMaker HyperPod EKS clusters, use the extended image in [`hyperpod-eks/Dockerfile`](hyperpod-eks/Dockerfile) which adds the `hyperpod-elastic-agent`:
-
-```bash
-cd hyperpod-eks
-docker build -t trl-hyperpod:latest .
-```
-
 ## Test Cases
 
 | Test Case | Description | Platform | Model |
