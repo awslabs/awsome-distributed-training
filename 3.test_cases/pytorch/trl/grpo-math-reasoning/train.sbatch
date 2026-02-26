@@ -1,7 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=grpo
+#SBATCH --job-name=grpo-math-reasoning
 #SBATCH --nodes=9
 #SBATCH --ntasks-per-node 1
+
+set -ex
 
 ## Set libfabric flags to use EFA
 export FI_PROVIDER=efa
@@ -33,7 +35,7 @@ head_node_ip=${NODELIST[0]}
 GPUS_PER_NODE=8
 
 LAUNCHER="accelerate launch \
-    --config_file /grpo/deepspeed_zero3.yaml \
+    --config_file /grpo-math-reasoning/deepspeed_zero3.yaml \
     --num_processes $((TRAIN_NODES_NUM * GPUS_PER_NODE)) \
     --num_machines ${TRAIN_NODES_NUM} \
     --rdzv_backend c10d \
@@ -43,7 +45,7 @@ LAUNCHER="accelerate launch \
 
 MODEL="${1:-'Qwen/Qwen2.5-0.5B-Instruct'}"
 
-CMD="/grpo/train.py --model $MODEL --vllm_server_host $VLLM_NODE"
+CMD="/grpo-math-reasoning/train.py --model $MODEL --vllm_server_host $VLLM_NODE"
 
 # Fetch model config and get number of heads for tensor parallel size
 CONFIG_URL="https://huggingface.co/$MODEL/raw/main/config.json"
@@ -64,15 +66,15 @@ echo "Detected number of heads: $NUM_HEADS"
 echo "Number of GPUs per node: $GPUS_PER_NODE"
 echo "Using tensor parallel size: $TENSOR_PARALLEL"
 
-srun -l --mpi=pmix --cpu-bind=none --container-image ./grpo.sqsh \
+srun -l --mpi=pmix --cpu-bind=none --container-image ./trl-base.sqsh \
     --output=grpo-%j.out --error=grpo-%j.err \
-    --container-mounts=.:/grpo,$HF_HOME:$HF_HOME \
+    --container-mounts=.:/grpo-math-reasoning,$HF_HOME:$HF_HOME \
     --nodes=$TRAIN_NODES_NUM --ntasks=$TRAIN_NODES_NUM --nodelist="${TRAIN_NODES}" \
     bash -c "$LAUNCHER $CMD" &
 
-srun -l --mpi=pmix --cpu-bind=none --container-image ./grpo.sqsh \
+srun -l --mpi=pmix --cpu-bind=none --container-image ./trl-base.sqsh \
     --output=vllm-%j.out --error=vllm-%j.out \
-    --container-mounts=.:/grpo,$HF_HOME:$HF_HOME \
+    --container-mounts=.:/grpo-math-reasoning,$HF_HOME:$HF_HOME \
     --nodes=1 --ntasks=1 --nodelist="${VLLM_NODE}" \
     trl vllm-serve --model $MODEL --tensor_parallel_size $TENSOR_PARALLEL &
 

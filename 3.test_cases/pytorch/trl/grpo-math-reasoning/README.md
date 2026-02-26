@@ -25,10 +25,10 @@ hf download Qwen/Qwen2.5-72B
 
 ### Docker Image
 
-All the dependencies are defined in `grpo.Dockerfile`. It uses Python 3.12, PyTorch 2.6.0 and the latest version of TRL. Build the image with the following command:
+All dependencies are defined in the shared base `Dockerfile` at the parent `trl/` directory. It uses Python 3.12, PyTorch 2.6.0 and the latest version of TRL. Build the image with the following command:
 
 ```bash
-docker build -f grpo.Dockerfile -t grpo:latest .
+cd .. && docker build -t trl-base:latest .
 ```
 
 ### Enroot
@@ -36,7 +36,7 @@ docker build -f grpo.Dockerfile -t grpo:latest .
 To run our container on Slurm, convert the container into a Squash file using Enroot:
 
 ```bash
-enroot import -o ./grpo.sqsh dockerd://grpo:latest
+enroot import -o ./trl-base.sqsh dockerd://trl-base:latest
 ```
 
 ## Launching GRPO training
@@ -86,7 +86,7 @@ In addition to the training logs, you can inspect the training progress by monit
 ## Inference
 
 ```bash
-srun --mpi=pmix --cpu-bind=none --container-image ./grpo.sqsh --container-mounts=.:/grpo,$HF_HOME:$HF_HOME --error=infer.err python /grpo/inference.py --model /grpo/YYYY-MM-DD_hh-mm-ss/Qwen/Qwen2.5-72B-GRPO/checkpoint-100
+srun --mpi=pmix --cpu-bind=none --container-image ./trl-base.sqsh --container-mounts=.:/grpo-math-reasoning,$HF_HOME:$HF_HOME --error=infer.err python /grpo-math-reasoning/inference.py --model /grpo-math-reasoning/YYYY-MM-DD_hh-mm-ss/Qwen/Qwen2.5-72B-GRPO/checkpoint-100
 ```
 
 Example output:
@@ -124,17 +124,17 @@ Use the following commands to evaluate a model on the test set:
 
 Original base model `Qwen/Qwen2.5-72B`:
 ```bash
-srun --mpi=pmix --cpu-bind=none --container-image ./grpo.sqsh --container-mounts=.:/grpo,$HF_HOME:$HF_HOME --error=eval.err python /grpo/eval.py --model Qwen/Qwen2.5-72B
+srun --mpi=pmix --cpu-bind=none --container-image ./trl-base.sqsh --container-mounts=.:/grpo-math-reasoning,$HF_HOME:$HF_HOME --error=eval.err python /grpo-math-reasoning/eval.py --model Qwen/Qwen2.5-72B
 ```
 
 Instruct fine-tuned model `Qwen/Qwen2.5-72B-Instruct`:
 ```bash
-srun --mpi=pmix --cpu-bind=none --container-image ./grpo.sqsh --container-mounts=.:/grpo,$HF_HOME:$HF_HOME --error=eval.err python /grpo/eval.py --model Qwen/Qwen2.5-72B-Instruct
+srun --mpi=pmix --cpu-bind=none --container-image ./trl-base.sqsh --container-mounts=.:/grpo-math-reasoning,$HF_HOME:$HF_HOME --error=eval.err python /grpo-math-reasoning/eval.py --model Qwen/Qwen2.5-72B-Instruct
 ```
 
 GRPO trained model after 100 steps: `Qwen/Qwen2.5-72B-GRPO/checkpoint-100`:
 ```bash
-srun --mpi=pmix --cpu-bind=none --container-image ./grpo.sqsh --container-mounts=.:/grpo,$HF_HOME:$HF_HOME --error=eval.err python /grpo/eval.py --model /grpo/YYYY-MM-DD_hh-mm-ss/Qwen/Qwen2.5-72B-GRPO/checkpoint-100
+srun --mpi=pmix --cpu-bind=none --container-image ./trl-base.sqsh --container-mounts=.:/grpo-math-reasoning,$HF_HOME:$HF_HOME --error=eval.err python /grpo-math-reasoning/eval.py --model /grpo-math-reasoning/YYYY-MM-DD_hh-mm-ss/Qwen/Qwen2.5-72B-GRPO/checkpoint-100
 ```
 
 |Model|Percentage of correct answers|
