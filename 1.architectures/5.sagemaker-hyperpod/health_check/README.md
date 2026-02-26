@@ -11,12 +11,6 @@ Open Questions on Product
 5. Need opinion on remediation logic on DCGM tests
 
 
-
-
-
-
-[This doc is based on [GPU Health Check (DCGM) on Amazon SageMaker HyperPod Slurm Clusters](https://quip-amazon.com/Q7T0AfdW1Z8L) drafted by scripts author [Yuxuan Zhao](https://quip-amazon.com/RSK9EA803Rk)]
-
 The Health Check Orchestrator is a flexible framework that automates health checks across your HyperPod Slurm cluster. It operates as a Slurm job, spawning child Slurm jobs on targeted worker nodes to run health check tests. Based on the collected results, it updates Slurm node features and automatically triggers remediation when health issues are identified.
 
 A DCGM diagnostic script is provided as a reference implementation; however, the orchestrator is compatible with any script that adheres to the simple output contract. 
