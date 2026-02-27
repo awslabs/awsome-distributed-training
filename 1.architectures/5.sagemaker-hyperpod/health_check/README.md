@@ -16,24 +16,20 @@
 │                          SLURM CLUSTER                             │
 │                                                                    │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                    MainJob (Single Node)                     │  │
+│  │                    MainJob (Management Node)                 │  │
 │  │                                                              │  │
-│  │  1. Submit worker jobs ──────────────────┐                   │  │
-│  │                                          │                   │  │
-│  │                                          ▼                   │  │
-│  │       ┌──────────────────────────────────────────┐           │  │
-│  │       │        Worker Slurm Job (Target Nodes)   │           │  │
-│  │       │                                          │           │  │
-│  │       │   ┌────────┐  ┌────────┐  ┌────────┐     │           │  │
-│  │       │   │ Node A │  │ Node B │  │ Node C │     │           │  │
-│  │       │   │  test  │  │  test  │  │  test  │     │           │  │
-│  │       │   └────────┘  └────────┘  └────────┘     │           │  │
-│  │       │                                          │           │  │
-│  │       └──────────────────────────────────────────┘           │  │
+│  │  1. Submit one sbatch job per target node ───┐               │  │
+│  │                                              │               │  │
+│  │                                              ▼               │  │
+│  │       ┌────────────┐ ┌────────────┐ ┌────────────┐          │  │
+│  │       │ Worker Job │ │ Worker Job │ │ Worker Job │          │  │
+│  │       │  (Node A)  │ │  (Node B)  │ │  (Node C)  │          │  │
+│  │       │   test     │ │   test     │ │   test     │          │  │
+│  │       └────────────┘ └────────────┘ └────────────┘          │  │
 │  │              ▲            ▲            ▲                     │  │
-│  │  2. Poll     │            │            │                     │  │
-│  │  for results │            │            │                     │  │
-│  │  ────────────┘────────────┘────────────┘                     │  │
+│  │  2. Wait for │            │            │                     │  │
+│  │  completion  │            │            │                     │  │
+│  │  (blocking)──┘────────────┘────────────┘                     │  │
 │  │                                                              │  │
 │  │  3. Process results & update Slurm features                  │  │
 │  │                                                              │  │
@@ -63,7 +59,8 @@ Place the orchestrator and your health check script on shared storage:
 cd /fsx/ubuntu
 git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/1.architectures/5.sagemaker-hyperpod/health_check
-chmod +x health_check_orchestrator.sh dcgm.sh
+chmod +x health_check_orchestrator.sh dcgm.sh prolog_dcgm.sh
+cp health_check_orchestrator.sh dcgm.sh prolog_dcgm.sh /fsx/ubuntu/
 ```
 
 ### Step 2: Submit the Health Check Job
@@ -80,10 +77,10 @@ What this command does:
 
 |Flag	|Value	|Meaning	|
 |---	|---	|---	|
+|`--output`	|`/fsx/ubuntu/health-check-results/management_%j.log`	|Instruct Slurm to capture the batch script's standard output and standard error to file `management_<jobid>.log`	|
 |`--target-partition`	|`ml.g5.xlarge`	|Test all available nodes in the `ml.g5.xlarge` partition	|
 |`--output-dir`	|`/fsx/ubuntu/health-check-results`	|Save all logs and results of child slurm jobs to this directory	|
-|`--output`	|`/fsx/ubuntu/health-check-results/management_%j.log`	|Instruct Slurm to connect the batch script's standard error directly to file `management_<jobid>.out`	|
-|`--test-script`	|`dcgm.sh`	|Use `dcgm.sh` as the health-check script on each target compute node	|
+|`--test-script`	|`/fsx/ubuntu/dcgm.sh`	|Use `dcgm.sh` as the health-check script on each target compute node	|
 |`--test-script-args`	|`'{"level": 2}'`	|Run DCGM Level 2 diagnostics (quick check)	|
 
 You'll see output like:
@@ -92,8 +89,6 @@ You'll see output like:
 Submitted batch job <job-id>
 ```
 
-
-
 ### Step 3: Monitor Progress
 
 Check health check orchestrator slurm job status:
@@ -101,8 +96,6 @@ Check health check orchestrator slurm job status:
 ```
 scontrol show job <job-id>
 ```
-
-
 
 ### Step 4: Review Results
 
@@ -117,45 +110,52 @@ If the  health check orchestra job completed, you’ll find
 * `management_<job-id>.log`: The orchestrator's main log with the overall summary.
 * `worker_<node-name>_<timestamp>.log`: Output from the worker job running on each node.
 * `health_check_summary_<job-id>_<timestamp>.log`: Summary of nodes' health check results.
+* `dcgm_<node-name>_<timestamp>.json`: Raw DCGM output with JSON format.
     
 
 Open the summary log to see the summary of test results on target compute nodes:
 
 ```
-# cat health_check_summary_<job-id>_<timestamp>.log
+# cat health_check_summary_257_20260227_230551.log
 
 ==========================================
-=== Health Check Summary ===
+||          Health Check Summary         ||
 ==========================================
-Overall Status: Passed
+Overall Status: Skipped
 Remediation applied: true
-Nodes PASSED: ip-10-1-4-240 ip-10-1-52-200 ip-10-1-114-79
+==========================================
+Nodes PASSED: ip-10-1-52-200 ip-10-1-114-79
+Nodes SKIPPED: ip-10-1-4-240
+  ip-10-1-4-240 (Skipped): node is unavailable (DOWN+CLOUD+FAIL+NOT_RESPONDING)
+==========================================
 Output directory: /fsx/ubuntu/health-check-results
 Per-node worker logs:
-  ip-10-1-4-240: /fsx/ubuntu/health-check-results/worker_ip-10-1-4-240_20260225_202125.log (exit code 0)
-  ip-10-1-52-200: /fsx/ubuntu/health-check-results/worker_ip-10-1-52-200_20260225_202125.log (exit code 0)
-  ip-10-1-114-79: /fsx/ubuntu/health-check-results/worker_ip-10-1-114-79_20260225_202125.log (exit code 0)
+  ip-10-1-4-240: /fsx/ubuntu/health-check-results/worker_ip-10-1-4-240_20260227_230551.log (exit code 1)
+  ip-10-1-52-200: /fsx/ubuntu/health-check-results/worker_ip-10-1-52-200_20260227_230551.log (exit code 0)
+  ip-10-1-114-79: /fsx/ubuntu/health-check-results/worker_ip-10-1-114-79_20260227_230551.log (exit code 0)
 ==========================================
 ```
 
-If any node fails, you'll see similar logs like this:
+If any node fails or skipped, you'll see logs like this:
 
 ```
 ==========================================
-=== Health Check Summary ===
+||          Health Check Summary         ||
 ==========================================
 Overall Status: Failed
 Remediation applied: true
+==========================================
 Nodes PASSED: ip-10-1-114-79
 Nodes SKIPPED: ip-10-1-52-200
   ip-10-1-52-200 (Skipped): Simulated dcgmi timeout after 1800s
 Nodes requiring REBOOT: ip-10-1-4-240
-  ip-10-1-4-240 (Failed): Simulated GPU isolation failure (DCGM ISOLATE severity)
+  ip-10-1-4-240 (Failed): Simulated GPU reset failure (DCGM RESET severity)
+==========================================
 Output directory: /fsx/ubuntu/dhc
 Per-node worker logs:
-  ip-10-1-4-240: /fsx/ubuntu/dhc/worker_ip-10-1-4-240_20260225_192603.log (exit code 0)
-  ip-10-1-52-200: /fsx/ubuntu/dhc/worker_ip-10-1-52-200_20260225_192603.log (exit code 0)
-  ip-10-1-114-79: /fsx/ubuntu/dhc/worker_ip-10-1-114-79_20260225_192603.log (exit code 0)
+  ip-10-1-4-240: /fsx/ubuntu/dhc/worker_ip-10-1-4-240_20260227_224652.log (exit code 0)
+  ip-10-1-52-200: /fsx/ubuntu/dhc/worker_ip-10-1-52-200_20260227_224652.log (exit code 0)
+  ip-10-1-114-79: /fsx/ubuntu/dhc/worker_ip-10-1-114-79_20260227_224652.log (exit code 0)
 ==========================================
 ```
 
@@ -243,7 +243,7 @@ The orchestrator passes these environment variables to your script:
 |Flag	|Description	|Example	|
 |---	|---	|---	|
 |`--test-script-args`	|JSON object of parameters for the test script	|'{"level": 3}'	|
-|`--remediate`	|Apply automatic remediation (true or false)	|TRUE	|
+|`--remediate`	|Apply automatic remediation (true or false)	|true	|
 
 ### Management Node Exclusion
 
@@ -259,7 +259,7 @@ WARNING: Management node ip-10-1-52-200 is in target list — excluding to avoid
 
 |JSON Key	|Description	|Default	|Valid Values	|
 |---	|---	|---	|---	|
-|`--level`	|DCGM diagnostic level	|4	|`2`, `3`, `4`	|
+|`level`	|DCGM diagnostic level	|4	|`2`, `3`, `4`	|
 
 DCGM Levels Explained:
 
@@ -289,7 +289,7 @@ Test an instance group with remediation disabled (dry-run) and specify which is 
 sbatch --nodelist=ip-10-1-4-240 --output=/fsx/ubuntu/dhc/management_%j.log health_check_orchestrator.sh \
 --instance-group worker-group-1 \
 --output-dir /fsx/ubuntu/dhc \
---test-script /fsx/ubuntu/mock_one_fail.sh \
+--test-script /fsx/ubuntu/dcgm.sh \
 --test-script-args '{"level": 2}' \
 --remediate false
 ```
@@ -331,14 +331,21 @@ PrologFlags=Alloc
 Apply the configuration change:
 
 ```
-srun -N1 hostname
+sudo scontrol reconfigure
+```
+
+### Step 4: Verify with a Job
+
+Run any job:
+```
+sbatch -p ml.g5.xlarge --gres=gpu:1 -o job_%j.out my_training_job.sh
 ```
 
 Check the prolog logs:
 
 ```
-ls /fsx/ubuntu/prolog_logs/
-cat /fsx/ubuntu/prolog_logs/<hostname>_prolog_<job_id>.log
+ls /fsx/health_check_prolog/logs
+cat /fsx/health_check_prolog/logs/<hostname>_prolog_<job_id>.log
 ```
 
 ### What Happens When You Submit a Job
@@ -360,9 +367,10 @@ readonly DCGM_LEVEL=2                        # DCGM diagnostic level (2-4)
 readonly CACHE_TTL_HOURS=1                   # If a cached result exists and is less than CACHE_TTL_HOURS hours old, skip the prolog check. Set to 0 to disable caching entirely.
 readonly UPDATE_FEATURES=true                # Update Slurm node features
 readonly FAILURE_ACTION="none"               # Action on DCGM failure: "none", "drain", or "remediate"
-readonly PROLOG_BASE_DIR="/fsx/ubuntu/health_check_prolog"
+readonly PROLOG_BASE_DIR="${HC_PROLOG_BASE_DIR:-/fsx/health_check_prolog}"
 readonly LOG_DIR="${PROLOG_BASE_DIR}/logs"
 readonly CACHE_DIR="${PROLOG_BASE_DIR}/cache"
+readonly FEATURE_PREFIX="HealthCheck"
 ```
 
 #### `FAILURE_ACTION` Options

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT-0
 # DCGM diagnostic health check for a single node.
 # Stdout contract: HEALTH_CHECK_RESULT:<hostname>:<Passed|Failed|Skipped>:<none|reboot|replace>:<reason>
-# "Skipped" = test itself didn't run (node marked Skipped, no remediation applied).
+# "Skipped" = test result is inconclusive (test didn't run or output couldn't be parsed); no remediation applied.
 # Severity→remediation ref: https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/dcgm-diagnostics.html#automating-responses-to-dcgm-diagnostic-failures
 
 set -euo pipefail
@@ -36,7 +36,25 @@ DCGM_LEVEL=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --help)    echo "Usage: $(basename "$0")" >&2; exit 0 ;;
+        --help)
+            cat >&2 <<HELPEOF
+Usage: $(basename "$0")
+
+DCGM diagnostic health check for a single node.
+This script has no CLI options; it is configured via environment variables
+set by the orchestrator (health_check_orchestrator.sh).
+
+Environment variables:
+  HC_TEST_PARAMS   JSON object with test parameters. Supported keys:
+                     "level"  DCGM diagnostic level (2, 3, or 4; default: 4)
+                   Example: HC_TEST_PARAMS='{"level": 2}'
+  HC_RESULTS_DIR   Directory for output files (default: /tmp)
+  HC_TIMESTAMP     Timestamp string for file naming (default: auto-generated)
+
+Output (stdout):
+  HEALTH_CHECK_RESULT:<hostname>:<Passed|Failed|Skipped>:<none|reboot|replace>:<reason>
+HELPEOF
+            exit 0 ;;
         *)         die "Unknown option: $1" ;;
     esac
 done

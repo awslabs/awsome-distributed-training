@@ -488,7 +488,7 @@ for node in $expanded_for_submit; do
     }
     node_state=$(echo "$node_info" | grep -oP 'State=\K[^ ]*' || true)
 
-    if [[ "$node_state" == *"DOWN"* || "$node_state" == *"DRAIN"* ]]; then
+    if [[ "$node_state" == *"DOWN"* || "$node_state" == *"DRAIN"* || "$node_state" == *"FAIL"* || "$node_state" == *"NOT_RESPONDING"* ]]; then
         warn "Node $node is unavailable ($node_state) — skipping"
         update_node_feature "$node" "Skipped" 2>/dev/null || true
         WORKER_RC["$node"]=1
@@ -641,10 +641,11 @@ SUMMARY_LOG="${OUTPUT_DIR}/health_check_summary_${SLURM_JOB_ID}_${TIMESTAMP}.log
 {
     echo ""
     echo "=========================================="
-    echo "=== Health Check Summary ==="
+    echo "||          Health Check Summary         ||"
     echo "=========================================="
     echo "Overall Status: $overall"
     echo "Remediation applied: $REMEDIATE"
+    echo "=========================================="
     if [[ -n "$passed" ]]; then       echo "Nodes PASSED:$passed"; fi
     if [[ -n "$need_error" ]]; then
         echo "Nodes SKIPPED:$need_error"
@@ -673,6 +674,7 @@ SUMMARY_LOG="${OUTPUT_DIR}/health_check_summary_${SLURM_JOB_ID}_${TIMESTAMP}.log
             if [[ -n "$local_reason" ]]; then echo "  $node ($local_status): $local_reason"; fi
         done
     fi
+    echo "=========================================="
     echo "Output directory: $OUTPUT_DIR"
     echo "Per-node worker logs:"
     for node in $expanded; do
