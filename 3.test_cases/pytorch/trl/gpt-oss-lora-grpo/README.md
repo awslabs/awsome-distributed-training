@@ -240,7 +240,7 @@ Evaluates whether the fine-tuned models reason in the specified language. Tests 
 ### 6.1. Run evaluation
 
 ```bash
-envsubst < evalution/eval-grpo.yaml | kubectl apply -f -
+envsubst < evaluation/eval-grpo.yaml | kubectl apply -f -
 ```
 
 ### 6.2. Check results
