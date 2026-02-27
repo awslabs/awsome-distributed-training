@@ -5,6 +5,7 @@ FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 ARG GDRCOPY_VERSION=v2.5.1
 ARG EFA_INSTALLER_VERSION=1.47.0
+ARG AWS_OFI_NCCL_VERSION="" # Kept for backward compatibility - value is ignored as plugin is bundled with EFA
 ARG NCCL_VERSION=v2.29.3-1
 ARG NCCL_TESTS_VERSION=v2.17.9
 
@@ -82,6 +83,10 @@ RUN cd $HOME \
     && cd aws-efa-installer \
     && ./efa_installer.sh -y -g -d --skip-kmod --skip-limit-conf --no-verify \
     && rm -rf $HOME/aws-efa-installer
+
+RUN echo "Verifying AWS OFI NCCL plugin installation..." && \
+    (ls -la /opt/amazon/ofi-nccl/lib/x86_64-linux-gnu/libnccl-ofi*.so || \
+     ls -la /opt/amazon/ofi-nccl/lib/aarch64-linux-gnu/libnccl-ofi*.so)
 
 ###################################################
 ## Install NCCL
