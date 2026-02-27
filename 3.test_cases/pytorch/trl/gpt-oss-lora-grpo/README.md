@@ -74,7 +74,7 @@ cd ..
 ### 1.1. Deploy FSx Storage Manager
 
 ```bash
-envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < train/fsx-storage-manager.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < kubernetes/fsx-storage-manager.yaml | kubectl apply -f -
 ```
 
 
@@ -89,13 +89,14 @@ For this example, we use the [HuggingFaceH4/Multilingual-Thinking](https://huggi
 Apply the training manifest:
 
 ```bash
-envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < train/train-lora-hyperpod-elastic-g6e.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < hyperpod-eks/train-lora-hyperpod-elastic-g6e.yaml | kubectl apply -f -
 ```
 
 ### 3.1. Monitor training job
 
 ```bash
 kubectl get pods -l app=gpt-oss-lora-elastic
+kubectl logs -f -l app=gpt-oss-lora-elastic
 kubectl logs -f lora-hyperpod-elastic-worker-<pod-id>
 kubectl exec -it fsx-storage-manager -- ls -la /fsx/checkpoints/
 ```
@@ -140,10 +141,10 @@ GRPO improves model behavior by generating K=8 completions per prompt, scoring e
 
 ### 4.1. Start training
 
-> **Note:** Before running, update `--peft_checkpoint` in `train/train-grpo-singlenode.yaml` to point to your converted SFT checkpoint from step 3.3.
+> **Note:** Before running, update `--peft_checkpoint` in `kubernetes/train-grpo-singlenode.yaml` to point to your converted SFT checkpoint from step 3.3.
 
 ```bash
-envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < train/train-grpo-singlenode.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < kubernetes/train-grpo-singlenode.yaml | kubectl apply -f -
 ```
 
 ### 4.2. Monitor training job
@@ -190,9 +191,9 @@ kubectl delete pod grpo-single
 ### 5.2. Deploy inference pods
 
 ```bash
-envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < inference/inference-g6e-base.yaml | kubectl apply -f -
-envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < inference/inference-g6e-trained.yaml | kubectl apply -f -
-envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < inference/inference-g6e-grpo.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < kubernetes/inference-g6e-base.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < kubernetes/inference-g6e-trained.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < kubernetes/inference-g6e-grpo.yaml | kubectl apply -f -
 ```
 
 
@@ -240,7 +241,7 @@ Evaluates whether the fine-tuned models reason in the specified language. Tests 
 ### 6.1. Run evaluation
 
 ```bash
-envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < evaluation/eval-grpo.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < kubernetes/eval-grpo.yaml | kubectl apply -f -
 ```
 
 ### 6.2. Check results
@@ -276,11 +277,11 @@ kubectl exec fsx-storage-manager -- cat /fsx/experiments/grpo_eval_checkpoint{ch
 | `artifacts/src/inference_grpo_new.py` | GRPO inference script |
 | `artifacts/src/sft_teacher_data.py` | Teacher data generation script |
 | `artifacts/src/configs/sft_lora.yaml` | SFT LoRA training config |
-| `train/train-lora-hyperpod-elastic-g6e.yaml` | SFT training job manifest |
-| `train/train-grpo-singlenode.yaml` | GRPO training pod manifest |
-| `train/fsx-storage-manager.yaml` | FSx storage manager pod |
-| `inference/inference-g6e-base.yaml` | Base model inference pod |
-| `inference/inference-g6e-trained.yaml` | SFT model inference pod |
-| `inference/inference-g6e-grpo.yaml` | GRPO model inference pod |
-| `evaluation/eval-grpo.yaml` | Evaluation pod spec |
+| `hyperpod-eks/train-lora-hyperpod-elastic-g6e.yaml` | SFT training job manifest (HyperPod) |
+| `kubernetes/train-grpo-singlenode.yaml` | GRPO training pod manifest |
+| `kubernetes/fsx-storage-manager.yaml` | FSx storage manager pod |
+| `kubernetes/inference-g6e-base.yaml` | Base model inference pod |
+| `kubernetes/inference-g6e-trained.yaml` | SFT model inference pod |
+| `kubernetes/inference-g6e-grpo.yaml` | GRPO model inference pod |
+| `kubernetes/eval-grpo.yaml` | Evaluation pod spec |
 | `env_vars.example` | Environment variables template |
