@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 #!/usr/bin/env python3
 """
 Interactive Single-Node Multi-GPU Inference for GPT-OSS 20B.
@@ -53,7 +56,7 @@ def load_model(base_model_path: str, checkpoint: str = None):
         device_map="auto",
         max_memory=max_memory,
         quantization_config=quantization_config,
-        trust_remote_code=True,
+        trust_remote_code=True,  # Required: GPT-OSS model uses custom code on HF Hub
         low_cpu_mem_usage=True,
     )
     
@@ -106,7 +109,7 @@ def generate_response(model, tokenizer, prompt: str, max_new_tokens: int = 2048,
     
     try:
         chat_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    except:
+    except Exception:
         if reasoning_language:
             chat_prompt = f"System: reasoning language: {reasoning_language}\nanswer language: {reasoning_language}\nUser: {prompt}\nAssistant:"
         else:

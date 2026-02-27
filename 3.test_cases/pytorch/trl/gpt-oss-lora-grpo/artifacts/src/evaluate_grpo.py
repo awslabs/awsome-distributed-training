@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 #!/usr/bin/env python3
 """
 Reasoning Language Evaluation Script v2
@@ -207,7 +210,7 @@ def detect_language(text: str) -> str:
         # Fallback: try with the full response
         try:
             return detect(text)
-        except:
+        except Exception:
             return "error"
 
 
@@ -293,7 +296,7 @@ def load_grpo_model(base_model: str, sft_checkpoint: str, grpo_checkpoint: str):
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
         torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
+        trust_remote_code=True,  # Required: GPT-OSS model uses custom code on HF Hub
         low_cpu_mem_usage=True,
         device_map="auto",
     )
@@ -331,7 +334,7 @@ def generate_response_grpo(model, tokenizer, prompt: str, reasoning_language: st
         chat_prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-    except:
+    except Exception:
         chat_prompt = f"System: reasoning language: {reasoning_language}\nanswer language: {reasoning_language}\nUser: {prompt}\nAssistant:"
     
     inputs = tokenizer(chat_prompt, return_tensors="pt", truncation=True, max_length=2048)
@@ -375,7 +378,7 @@ def run_evaluation(model, tokenizer, output_file: str, use_grpo_generate: bool =
         generate_fn = lambda m, t, p, lang: generate_response_grpo(m, t, p, reasoning_language=lang)
     else:
         from inference_g6e import generate_response
-        generate_fn = lambda m, t, p, lang: generate_response(m, t, p, max_new_tokens=1024, show_full=True, reasoning_language=lang)
+        generate_fn = lambda m, t, p, lang: generate_response(m, t, p, max_new_tokens=1024, reasoning_language=lang)
     
     test_num = 0
     is_first = True
@@ -499,7 +502,7 @@ def main():
     parser.add_argument("--use_trained", action="store_true", help="Use trained model with LoRA (SFT only)")
     parser.add_argument("--checkpoint_dir", type=str, default="/fsx/checkpoints", help="Checkpoint directory")
     parser.add_argument("--grpo_checkpoint", type=str, default=None, 
-                        help="GRPO checkpoint path (e.g., /fsx/checkpoints/grpo-multinode/checkpoint-366)")
+                        help="GRPO checkpoint path (e.g., /fsx/checkpoints/grpo-singlenode/checkpoint-366)")
     parser.add_argument("--sft_checkpoint", type=str, default="/fsx/checkpoints/converted-peft/lora-checkpoint-1000-peft",
                         help="SFT checkpoint path (used with --grpo_checkpoint)")
     parser.add_argument("--output", type=str, default="/fsx/experiments/grpo_evaluation.txt", help="Output file")
@@ -508,8 +511,8 @@ def main():
     
     # Install dependencies if needed
     if not HAS_LANGDETECT:
-        print("Installing langdetect...")
-        os.system("pip install langdetect")
+        print("ERROR: langdetect not installed. Please rebuild the container image.")
+        print("  pip install langdetect")
     
     # Create output directory
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
@@ -530,7 +533,8 @@ def main():
         # Standard mode: use inference_g6e
         from inference_g6e import load_model
         print(f"Loading model (use_trained={args.use_trained})...")
-        model, tokenizer = load_model(args.base_model, use_trained=args.use_trained, checkpoint_dir=args.checkpoint_dir)
+        checkpoint_path = args.sft_checkpoint if args.use_trained else None
+        model, tokenizer = load_model(args.base_model, checkpoint=checkpoint_path)
         use_grpo_generate = False
     
     # Run evaluation

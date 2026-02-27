@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 apiVersion: v1
 kind: Pod
 metadata:
@@ -30,10 +33,10 @@ spec:
         - "/bin/bash"
         - "-c"
         - |
-          python /app/grpo_multinode.py \
+          python /app/grpo_singlenode.py \
             --model_name_or_path openai/gpt-oss-20b \
             --peft_checkpoint /fsx/checkpoints/converted-peft/lora-checkpoint-1000-peft \
-            --output_dir /fsx/checkpoints/grpo-multinode \
+            --output_dir /fsx/checkpoints/grpo-singlenode \
             --num_generations 8 \
             --num_epochs 10 \
             --learning_rate 1e-6 \

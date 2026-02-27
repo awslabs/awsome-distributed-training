@@ -1,6 +1,6 @@
 # GPT-OSS 20B Training & Inference Guide
 
-This guide explains how to train the GPT-OSS 20B model with LoRA, then improve it using Group Relative Policy Optimization (GRPO) for better language compliance in reasoning and final answers. It is designed to be as simple as possible, requires no data preparation, and uses a container image. For further background information look at https://developers.openai.com/cookbook/articles/gpt-oss/fine-tune-transfomers
+This guide explains how to train the GPT-OSS 20B model with LoRA, then improve it using Group Relative Policy Optimization (GRPO) for better language compliance in reasoning and final answers. It is designed to be as simple as possible, requires no data preparation, and uses a container image. For further background information look at https://developers.openai.com/cookbook/articles/gpt-oss/fine-tune-transformers
 
 ## Pipeline Overview
 
@@ -22,7 +22,7 @@ This guide explains how to train the GPT-OSS 20B model with LoRA, then improve i
 
 ### 0.1. EKS Cluster
 
-Before running this training, you'll need to create an Amazon EKS or a SageMaker HyperPod EKS cluster. Instructions can be found in [1.architectures](../../1.architectures), the [aws-do-eks](https://bit.ly/do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
+Before running this training, you'll need to create an Amazon EKS or a SageMaker HyperPod EKS cluster. Instructions can be found in [1.architectures](../../../../1.architectures), the [aws-do-eks](https://bit.ly/do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
 
 ### 0.2. Connect to your EKS Cluster
 
@@ -45,7 +45,7 @@ arn:aws:eks:us-east-2:xxxxxxxxxxxx:cluster/xxx-eks-cluster
 ### 0.3. Clone the repository
 
 ```bash
-git clone https://github.com/aws-samples/awsome-distributed-training/
+git clone https://github.com/awslabs/awsome-distributed-training/
 ```
 
 ## 1. Build container image
@@ -74,7 +74,7 @@ cd ..
 ### 1.1. Deploy FSx Storage Manager
 
 ```bash
-envsubst < train/fsx-storage-manager.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < train/fsx-storage-manager.yaml | kubectl apply -f -
 ```
 
 
@@ -89,7 +89,7 @@ For this example, we use the [HuggingFaceH4/Multilingual-Thinking](https://huggi
 Apply the training manifest:
 
 ```bash
-envsubst < train/train-lora-hyperpod-elastic-g6e.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < train/train-lora-hyperpod-elastic-g6e.yaml | kubectl apply -f -
 ```
 
 ### 3.1. Monitor training job
@@ -140,10 +140,10 @@ GRPO improves model behavior by generating K=8 completions per prompt, scoring e
 
 ### 4.1. Start training
 
-> **Note:** Before running, update `--peft_checkpoint` in `train/train-grpo-multinode.yaml` to point to your converted SFT checkpoint from step 3.3.
+> **Note:** Before running, update `--peft_checkpoint` in `train/train-grpo-singlenode.yaml` to point to your converted SFT checkpoint from step 3.3.
 
 ```bash
-envsubst < train/train-grpo-multinode.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < train/train-grpo-singlenode.yaml | kubectl apply -f -
 ```
 
 ### 4.2. Monitor training job
@@ -152,7 +152,7 @@ envsubst < train/train-grpo-multinode.yaml | kubectl apply -f -
 kubectl logs grpo-single --tail=50
 ```
 
-After training completes, the checkpoint is saved to `/fsx/checkpoints/grpo-multinode/`.
+After training completes, the checkpoint is saved to `/fsx/checkpoints/grpo-singlenode/`.
 
 ### 4.3. Configuration
 
@@ -190,9 +190,9 @@ kubectl delete pod grpo-single
 ### 5.2. Deploy inference pods
 
 ```bash
-envsubst < inference/inference-g6e-base.yaml | kubectl apply -f -
-envsubst < inference/inference-g6e-trained.yaml | kubectl apply -f -
-envsubst < inference/inference-g6e-grpo.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < inference/inference-g6e-base.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < inference/inference-g6e-trained.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < inference/inference-g6e-grpo.yaml | kubectl apply -f -
 ```
 
 
@@ -240,7 +240,7 @@ Evaluates whether the fine-tuned models reason in the specified language. Tests 
 ### 6.1. Run evaluation
 
 ```bash
-envsubst < evaluation/eval-grpo.yaml | kubectl apply -f -
+envsubst '$REGISTRY $IMAGE $TAG $HF_TOKEN' < evaluation/eval-grpo.yaml | kubectl apply -f -
 ```
 
 ### 6.2. Check results
@@ -264,15 +264,23 @@ kubectl exec fsx-storage-manager -- cat /fsx/experiments/grpo_eval_checkpoint{ch
 
 | File | Purpose |
 |------|---------|
-| `train-lora-hyperpod-elastic-g6e.yaml` | SFT training job |
-| `train-grpo-multinode.yaml` | GRPO training pod |
-| `grpo_multinode.py` | GRPO training script |
-| `convert_fsdp_checkpoint.py` | FSDP to PEFT converter |
-| `evaluate_grpo.py` | GRPO evaluation script |
-| `eval-grpo.yaml` | Evaluation pod spec |
-| `inference_g6e.py` | Base/SFT inference script |
-| `inference_grpo_new.py` | GRPO inference script |
-| `inference-g6e-base.yaml` | Base model pod |
-| `inference-g6e-trained.yaml` | SFT model pod |
-| `inference-g6e-grpo.yaml` | GRPO model pod |
-| `fsx-storage-manager.yaml` | FSx helper pod |
+| `artifacts/Dockerfile` | Container image definition |
+| `artifacts/build_push.sh` | Build and push image to ECR |
+| `artifacts/requirements.txt` | Python dependencies |
+| `artifacts/src/sft.py` | SFT training script |
+| `artifacts/src/grpo_singlenode.py` | GRPO training script |
+| `artifacts/src/convert_fsdp_checkpoint.py` | FSDP to PEFT converter |
+| `artifacts/src/convert_grpo_checkpoint.py` | GRPO checkpoint converter |
+| `artifacts/src/evaluate_grpo.py` | GRPO evaluation script |
+| `artifacts/src/inference_g6e.py` | Base/SFT inference script |
+| `artifacts/src/inference_grpo_new.py` | GRPO inference script |
+| `artifacts/src/sft_teacher_data.py` | Teacher data generation script |
+| `artifacts/src/configs/sft_lora.yaml` | SFT LoRA training config |
+| `train/train-lora-hyperpod-elastic-g6e.yaml` | SFT training job manifest |
+| `train/train-grpo-singlenode.yaml` | GRPO training pod manifest |
+| `train/fsx-storage-manager.yaml` | FSx storage manager pod |
+| `inference/inference-g6e-base.yaml` | Base model inference pod |
+| `inference/inference-g6e-trained.yaml` | SFT model inference pod |
+| `inference/inference-g6e-grpo.yaml` | GRPO model inference pod |
+| `evaluation/eval-grpo.yaml` | Evaluation pod spec |
+| `env_vars.example` | Environment variables template |

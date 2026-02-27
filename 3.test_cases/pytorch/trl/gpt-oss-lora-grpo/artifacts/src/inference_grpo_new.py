@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 #!/usr/bin/env python3
 """
 Interactive GRPO Inference - Using same prompt format as evaluate_grpo.py
@@ -33,7 +36,7 @@ def load_grpo_model(base_model: str, sft_checkpoint: str, grpo_checkpoint: str):
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
         torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
+        trust_remote_code=True,  # Required: GPT-OSS model uses custom code on HF Hub
         low_cpu_mem_usage=True,
         device_map="auto",
     )
@@ -73,7 +76,7 @@ def generate_response(model, tokenizer, prompt: str, reasoning_language: str = "
         chat_prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-    except:
+    except Exception:
         chat_prompt = f"System: reasoning language: {reasoning_language}\nanswer language: {reasoning_language}\nUser: {prompt}\nAssistant:"
     
     inputs = tokenizer(chat_prompt, return_tensors="pt", truncation=True, max_length=2048)

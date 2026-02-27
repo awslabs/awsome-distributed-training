@@ -1,3 +1,10 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Note: A shared trl/Dockerfile exists at ../../Dockerfile with common TRL dependencies.
+# This recipe uses a separate Dockerfile because it requires the AWS Deep Learning Container
+# base image (with EFA/NCCL pre-installed) and hyperpod-elastic-agent for HyperPod EKS.
+
 # 1. Use AWS Image (EFA/NCCL/PyTorch pre-installed)
 
 FROM public.ecr.aws/deep-learning-containers/base:12.9.1-gpu-py312-cu129-ubuntu22.04-ec2-v1.31
@@ -28,11 +35,9 @@ WORKDIR /app
 COPY requirements.txt /app/
 
 # 4. Install Dependencies
-# CRITICAL FIX: We remove flash-attn from the list first, then install it manually with --no-build-isolation
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip && \
     pip install packaging ninja && \
-    sed -i '/flash-attn/d' requirements.txt && \
     pip install -r requirements.txt
 
 # 5. Install Flash Attention (The FIX)
@@ -43,6 +48,6 @@ RUN pip install flash-attn --no-build-isolation
 RUN pip install hyperpod-elastic-agent trackio langdetect
 
 # 7. Copy Code & Set Entrypoint
+# Note: Container runs as root - required for NCCL/EFA device access in distributed training
 COPY src/ /app/
 ENV PYTHONPATH="${PYTHONPATH}:/app"
-#CMD ["python", "sft.py", "--config", "configs/sft_lora.yaml"]

@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 #!/usr/bin/env python3
 """
 SFT Training on Teacher-Generated Data
@@ -87,7 +90,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
         torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
+        trust_remote_code=True,  # Required: GPT-OSS model uses custom code on HF Hub
         low_cpu_mem_usage=True,
         quantization_config=quantization_config,
         device_map="auto",
@@ -152,7 +155,7 @@ def main():
         print("SFT training complete!")
         print(f"Checkpoint saved to: {args.output_dir}")
         print("\nNext step: Run GRPO training with this checkpoint:")
-        print(f"  python grpo_multinode.py --peft_checkpoint {args.output_dir}")
+        print(f"  python grpo_singlenode.py --peft_checkpoint {args.output_dir}")
 
 
 if __name__ == "__main__":

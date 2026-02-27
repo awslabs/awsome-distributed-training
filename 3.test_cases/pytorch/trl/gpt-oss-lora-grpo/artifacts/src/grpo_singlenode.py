@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 #!/usr/bin/env python3
 """
 GRPO Multi-Node Training Script with DDP
@@ -15,10 +18,10 @@ Key features:
 - DDP syncs gradients between nodes (1 process per node)
 
 Usage (multi-node):
-    torchrun --nnodes=4 --nproc_per_node=1 grpo_multinode.py
+    torchrun --nnodes=4 --nproc_per_node=1 grpo_singlenode.py
 
 Usage (single node):
-    python grpo_multinode.py
+    python grpo_singlenode.py
 """
 
 import os
@@ -85,7 +88,7 @@ def detect_language(text: str) -> str:
         if len(clean_text.strip()) < 20:
             return "too_short"
         return detect(clean_text)
-    except:
+    except Exception:
         return "error"
 
 
@@ -163,7 +166,7 @@ def detect_question_language(text: str) -> str:
         detected_code = detect(clean_text)
         code_to_name = {v: k for k, v in LANG_CODE_MAP.items()}
         return code_to_name.get(detected_code, "English")
-    except:
+    except Exception:
         return "English"
 
 
@@ -221,7 +224,7 @@ class TestPromptCallback(TrainerCallback):
             chat_prompt = self.tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
-        except:
+        except Exception:
             chat_prompt = f"System: reasoning language: {test_language}\nanswer language: {test_language}\nUser: {test_prompt}\nAssistant:"
         
         try:
@@ -334,7 +337,7 @@ def prepare_dataset(dataset_name: str, tokenizer, shard_idx: int = 0, num_shards
             formatted_prompt = tokenizer.apply_chat_template(
                 chat_messages, tokenize=False, add_generation_prompt=True
             )
-        except:
+        except Exception:
             formatted_prompt = f"System: reasoning language: {detected_language}\nanswer language: {detected_language}\nUser: {user_prompt}\nAssistant:"
         
         return {"prompt": formatted_prompt}
@@ -429,7 +432,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name_or_path,
         torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
+        trust_remote_code=True,  # Required: GPT-OSS model uses custom code on HF Hub
         low_cpu_mem_usage=True,
         device_map="auto",  # Spread across 4 GPUs within this node
     )

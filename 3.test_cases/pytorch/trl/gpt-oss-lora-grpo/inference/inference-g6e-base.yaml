@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 apiVersion: v1
 kind: Pod
 metadata:
@@ -5,7 +8,7 @@ metadata:
 spec:
   restartPolicy: Never
   nodeSelector:
-    kubernetes.io/hostname: hyperpod-i-09140282218b0aa8b
+    node.kubernetes.io/instance-type: ml.g6e.12xlarge
   containers:
     - name: inference
       image: ${REGISTRY}${IMAGE}:${TAG} 

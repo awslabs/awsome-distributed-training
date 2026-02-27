@@ -13,6 +13,6 @@ export NUM_GPU_PER_NODE=8
 export NUM_EFA_PER_NODE=16
 export PRIVATE_SUBNET_ID="subnet-xxxxxxxxxxxxxxxxx"
 export SECURITY_GROUP_ID="sg-xxxxxxxxxxxxxxxxx"
-export HF_TOKEN = "xxxxxxx"
+export HF_TOKEN="<your-huggingface-token>"
 
 

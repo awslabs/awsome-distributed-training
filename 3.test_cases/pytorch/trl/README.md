@@ -18,6 +18,7 @@ docker build -t trl-base:latest .
 | Test Case | Description | Platform | Model |
 |-----------|-------------|----------|-------|
 | [grpo-math-reasoning](grpo-math-reasoning/) | Multi-node GRPO training for math reasoning | Slurm | Qwen2.5-72B + NuminaMath |
+| [gpt-oss-lora-grpo](gpt-oss-lora-grpo/) | SFT LoRA + GRPO for multilingual reasoning | HyperPod EKS | GPT-OSS 20B |
 
 ## Prerequisites
 
