@@ -69,7 +69,7 @@ chmod +x health_check_orchestrator.sh dcgm.sh
 ### Step 2: Submit the Health Check Job
 
 ```
-sbatch --output=/fsx/ubuntu/health-check-results/leader_%j.log health_check_orchestrator.sh \
+sbatch --output=/fsx/ubuntu/health-check-results/management_%j.log health_check_orchestrator.sh \
 --target-partition ml.g5.xlarge \
 --output-dir /fsx/ubuntu/health-check-results \
 --test-script /fsx/ubuntu/dcgm.sh \
@@ -82,7 +82,7 @@ What this command does:
 |---	|---	|---	|
 |`--target-partition`	|`ml.g5.xlarge`	|Test all available nodes in the `ml.g5.xlarge` partition	|
 |`--output-dir`	|`/fsx/ubuntu/health-check-results`	|Save all logs and results of child slurm jobs to this directory	|
-|`--output`	|`/fsx/ubuntu/health-check-results/leader_%j.log`	|Instruct Slurm to connect the batch script's standard error directly to file `leader_<jobid>.out`	|
+|`--output`	|`/fsx/ubuntu/health-check-results/management_%j.log`	|Instruct Slurm to connect the batch script's standard error directly to file `management_<jobid>.out`	|
 |`--test-script`	|`dcgm.sh`	|Use `dcgm.sh` as the health-check script on each target compute node	|
 |`--test-script-args`	|`'{"level": 2}'`	|Run DCGM Level 2 diagnostics (quick check)	|
 
@@ -106,7 +106,7 @@ scontrol show job <job-id>
 
 ### Step 4: Review Results
 
-Once the health check orchestra job reached terminal status, check the output directory:
+Once the health check orchestrator job reached terminal status, check the output directory:
 
 ```
 ls /fsx/ubuntu/health-check-results/
@@ -114,7 +114,7 @@ ls /fsx/ubuntu/health-check-results/
 
 If the  health check orchestra job completed, you’ll find
 
-* `leader_<job-id>.log`: The orchestrator's main log with the overall summary.
+* `management_<job-id>.log`: The orchestrator's main log with the overall summary.
 * `worker_<node-name>_<timestamp>.log`: Output from the worker job running on each node.
 * `health_check_summary_<job-id>_<timestamp>.log`: Summary of nodes' health check results.
     
@@ -245,12 +245,12 @@ The orchestrator passes these environment variables to your script:
 |`--test-script-args`	|JSON object of parameters for the test script	|'{"level": 3}'	|
 |`--remediate`	|Apply automatic remediation (true or false)	|TRUE	|
 
-### Leader Node Exclusion
+### Management Node Exclusion
 
-If the orchestrator job runs on a node that is also included in the target list (e.g., when targeting an entire partition that contains the leader node), it automatically excludes that node from the health check targets. This is because a worker job cannot be scheduled on a node already occupied by the orchestrator. A warning is logged when this occurs:
+If the orchestrator job runs on a node that is also included in the target list (e.g., when targeting an entire partition that contains the management node), it automatically excludes that node from the health check targets. This is because a worker job cannot be scheduled on a node already occupied by the orchestrator. A warning is logged when this occurs:
 
 ```
-WARNING: Leader node ip-10-1-52-200 is in target list — excluding to avoid deadlock
+WARNING: Management node ip-10-1-52-200 is in target list — excluding to avoid deadlock
 ```
 
 
@@ -276,17 +276,17 @@ DCGM Levels Explained:
 Test two specific nodes with Level 3 diagnostics:
 
 ```
-sbatch --output=/fsx/ubuntu/dhc/leader_%j.log health_check_orchestrator.sh \
+sbatch --output=/fsx/ubuntu/dhc/management_%j.log health_check_orchestrator.sh \
 --target-nodes ip-10-1-114-79,ip-10-1-4-240 \
 --output-dir /fsx/ubuntu/dhc \
 --test-script /fsx/ubuntu/dcgm.sh \
 --test-script-args '{"level": 3}'
 ```
 
-Test an instance group with remediation disabled (dry-run) and specify which is the leader node:
+Test an instance group with remediation disabled (dry-run) and specify which is the management node:
 
 ```
-sbatch --nodelist=ip-10-1-4-240 --output=/fsx/ubuntu/dhc/leader_%j.log health_check_orchestrator.sh \
+sbatch --nodelist=ip-10-1-4-240 --output=/fsx/ubuntu/dhc/management_%j.log health_check_orchestrator.sh \
 --instance-group worker-group-1 \
 --output-dir /fsx/ubuntu/dhc \
 --test-script /fsx/ubuntu/mock_one_fail.sh \
@@ -297,7 +297,7 @@ sbatch --nodelist=ip-10-1-4-240 --output=/fsx/ubuntu/dhc/leader_%j.log health_ch
 Test a partition with a custom timeout:
 
 ```
-sbatch --time=240 --output=/fsx/ubuntu/dhc/leader_%j.log health_check_orchestrator.sh \
+sbatch --time=240 --output=/fsx/ubuntu/dhc/management_%j.log health_check_orchestrator.sh \
 --target-partition ml.g5.xlarge \
 --output-dir /fsx/ubuntu/dhc \
 --test-script /fsx/ubuntu/dcgm.sh

@@ -2,9 +2,9 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 # Health-check orchestrator for Slurm clusters.
-# Runs on a single node as the Main slurm batch job. 
-# Dispatches one worker job per target node to execute health-check test, 
-# waits for completion, then processes the results, 
+# Runs on a single management node as the Main slurm batch job.
+# Dispatches one worker job per target node to execute health-check test,
+# waits for completion, then processes the results,
 # updates Slurm node features, and applies any necessary remediation.
 #
 # Test script stdout contract (one line per node):
@@ -62,9 +62,9 @@ Exit codes:
   127   Missing dependency — required tool (e.g. jq) not installed
 
 Examples:
-  sbatch --time=120 --output=/fsx/ubuntu/dhc/leader_%j.log health_check_orchestrator.sh --target-nodes node1,node2 --test-script /fsx/ubuntu/dhc/dcgm.sh --output-dir /fsx/ubuntu/dhc
-  sbatch --output=/fsx/ubuntu/dhc/leader_%j.log health_check_orchestrator.sh --target-partition ml.g5.xlarge --test-script /fsx/ubuntu/dhc/dcgm.sh --output-dir /fsx/ubuntu/dhc --test-script-args '{"level": 2}'
-  sbatch --output=/fsx/ubuntu/dhc/leader_%j.log health_check_orchestrator.sh --instance-group worker-group-1 --test-script /fsx/ubuntu/dhc/dcgm.sh --output-dir /fsx/ubuntu/dhc
+  sbatch --time=120 --output=/fsx/ubuntu/dhc/management_%j.log health_check_orchestrator.sh --target-nodes node1,node2 --test-script /fsx/ubuntu/dhc/dcgm.sh --output-dir /fsx/ubuntu/dhc
+  sbatch --output=/fsx/ubuntu/dhc/management_%j.log health_check_orchestrator.sh --target-partition ml.g5.xlarge --test-script /fsx/ubuntu/dhc/dcgm.sh --output-dir /fsx/ubuntu/dhc --test-script-args '{"level": 2}'
+  sbatch --output=/fsx/ubuntu/dhc/management_%j.log health_check_orchestrator.sh --instance-group worker-group-1 --test-script /fsx/ubuntu/dhc/dcgm.sh --output-dir /fsx/ubuntu/dhc
 EOF
     exit "${1:-$EXIT_INVALID_ARGS}"
 }
@@ -362,7 +362,7 @@ if [[ -n "$TEST_SCRIPT_ARGS" ]]; then
     if [[ "$json_type" != "object" ]]; then die $EXIT_INVALID_ARGS "--test-script-args must be a JSON object, got: $json_type"; fi
 fi
 
-# --- Parse leader job time limit from Slurm ---
+# --- Parse management job time limit from Slurm ---
 # If user specified sbatch --time=<minutes>, we read it here and derive worker timeout.
 # If not specified, TimeLimit will be "UNLIMITED" and workers/test scripts use their own defaults.
 parse_slurm_timelimit() {
@@ -383,22 +383,22 @@ parse_slurm_timelimit() {
     echo $(( days * 24 * 60 + hours * 60 + minutes + (seconds > 0 ? 1 : 0) ))
 }
 
-LEADER_TIMELIMIT=""
+MGMT_TIMELIMIT=""
 WORKER_TIMEOUT_MINUTES=""
 if [[ -n "${SLURM_JOB_ID:-}" ]]; then
     raw_timelimit=$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null | grep -oP 'TimeLimit=\K[^ ]*' || true)
     if [[ -n "$raw_timelimit" ]]; then
-        LEADER_TIMELIMIT=$(parse_slurm_timelimit "$raw_timelimit")
+        MGMT_TIMELIMIT=$(parse_slurm_timelimit "$raw_timelimit")
     fi
 fi
 
-if [[ -n "$LEADER_TIMELIMIT" ]]; then
-    WORKER_TIMEOUT_MINUTES=$(( LEADER_TIMELIMIT - WORKER_TIMEOUT_BUFFER_MINUTES ))
+if [[ -n "$MGMT_TIMELIMIT" ]]; then
+    WORKER_TIMEOUT_MINUTES=$(( MGMT_TIMELIMIT - WORKER_TIMEOUT_BUFFER_MINUTES ))
     if (( WORKER_TIMEOUT_MINUTES <= 0 )); then
-        die $EXIT_INVALID_ARGS "Leader job time limit (${LEADER_TIMELIMIT}m) is too short; must be > ${WORKER_TIMEOUT_BUFFER_MINUTES}m buffer"
+        die $EXIT_INVALID_ARGS "Management job time limit (${MGMT_TIMELIMIT}m) is too short; must be > ${WORKER_TIMEOUT_BUFFER_MINUTES}m buffer"
     fi
-    echo "Leader job time limit: ${LEADER_TIMELIMIT} minutes (from sbatch --time)"
-    echo "Worker job timeout: ${WORKER_TIMEOUT_MINUTES} minutes (leader ${LEADER_TIMELIMIT} - ${WORKER_TIMEOUT_BUFFER_MINUTES} buffer)"
+    echo "Management job time limit: ${MGMT_TIMELIMIT} minutes (from sbatch --time)"
+    echo "Worker job timeout: ${WORKER_TIMEOUT_MINUTES} minutes (management ${MGMT_TIMELIMIT} - ${WORKER_TIMEOUT_BUFFER_MINUTES} buffer)"
 else
     echo "No sbatch --time specified — workers will run without a time limit; test scripts use built-in defaults"
 fi
@@ -413,32 +413,32 @@ case "$RESOURCE" in
 esac
 if [[ -z "$TARGET_NODES" ]]; then die "Resolved node list is empty"; fi
 
-# Exclude leader node from targets to avoid deadlock
-LEADER_HOST="$(hostname)"
+# Exclude management node from targets to avoid deadlock
+MGMT_HOST="$(hostname)"
 expanded_targets=$(expand_nodelist "$TARGET_NODES")
-filtered_targets="" leader_excluded=false
+filtered_targets="" mgmt_excluded=false
 for node in $expanded_targets; do
     if [[ -z "$node" ]]; then continue; fi
-    if [[ "$node" == "$LEADER_HOST" ]]; then
-        leader_excluded=true
+    if [[ "$node" == "$MGMT_HOST" ]]; then
+        mgmt_excluded=true
     else
         filtered_targets="${filtered_targets:+${filtered_targets},}${node}"
     fi
 done
-if [[ "$leader_excluded" == "true" ]]; then
-    warn "Leader node $LEADER_HOST is in target list — excluding to avoid deadlock"
+if [[ "$mgmt_excluded" == "true" ]]; then
+    warn "Management node $MGMT_HOST is in target list — excluding to avoid deadlock"
     TARGET_NODES="$filtered_targets"
 fi
-if [[ -z "$TARGET_NODES" ]]; then die "Target node list is empty after excluding leader ($LEADER_HOST)"; fi
+if [[ -z "$TARGET_NODES" ]]; then die "Target node list is empty after excluding management node ($MGMT_HOST)"; fi
 
 NODE_COUNT=$(expand_nodelist "$TARGET_NODES" | wc -l)
 
 echo "=========================================="
-echo "Health Check Leader — Job $SLURM_JOB_ID"
+echo "Health Check Management Node — Job $SLURM_JOB_ID"
 echo "=========================================="
 echo "Started at: $(date)"
 echo "Timestamp: $TIMESTAMP"
-echo "Leader host: $(hostname)"
+echo "Management host: $(hostname)"
 echo "Resource: $RESOURCE ($TARGET_VALUE)"
 echo "Target nodes: $TARGET_NODES ($NODE_COUNT node(s))"
 echo "Test script: $TEST_SCRIPT"
