@@ -2,7 +2,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 # Slurm Prolog: DCGM GPU health check before job execution.
-# Pass → job proceeds. Fail → behavior controlled by DRAIN_ON_FAILURE.
+# Pass → job proceeds. Fail → behavior controlled by FAILURE_ACTION.
 # Recent passes are cached to skip redundant checks.
 
 set -euo pipefail
@@ -11,7 +11,7 @@ set -euo pipefail
 readonly DCGM_LEVEL=2                        # DCGM diagnostic level (2-4)
 readonly CACHE_TTL_HOURS=1                   # If a cached result exists and is less than CACHE_TTL_HOURS hours old, skip the prolog check. Set to 0 to disable caching entirely.
 readonly UPDATE_FEATURES=true                # Update Slurm node features
-readonly DRAIN_ON_FAILURE=false              # If true, exit 1 on failure so Slurm drains the node and requeues the job. If false, only update the feature to Failed and let the job proceed.
+readonly FAILURE_ACTION="none"               # Action on DCGM failure: "none" = mark Failed, job proceeds; "drain" = exit 1, Slurm drains node & requeues job; "remediate" = set node State=FAIL for reboot/replace via HyperPod
 readonly PROLOG_BASE_DIR="${HC_PROLOG_BASE_DIR:-/fsx/health_check_prolog}"
 readonly LOG_DIR="${PROLOG_BASE_DIR}/logs"
 readonly CACHE_DIR="${PROLOG_BASE_DIR}/cache"
@@ -163,13 +163,31 @@ main() {
     else
         maybe_update_feature "Failed"
         invalidate_cache
-        if [[ "${DRAIN_ON_FAILURE}" == "true" ]]; then
-            log "DCGM FAILED (remediation=${remediation}${reason:+, reason=${reason}}) — draining node, requeuing job ${job_id}"
-            exit 1
-        else
-            log "DCGM FAILED (remediation=${remediation}${reason:+, reason=${reason}}) — marked Failed, job ${job_id} proceeds (drain disabled)"
-            exit 0
-        fi
+        case "${FAILURE_ACTION}" in
+            none)
+                log "DCGM FAILED (remediation=${remediation}${reason:+, reason=${reason}}) — marked Failed, job ${job_id} proceeds (FAILURE_ACTION=none)"
+                exit 0
+                ;;
+            drain)
+                log "DCGM FAILED (remediation=${remediation}${reason:+, reason=${reason}}) — draining node, requeuing job ${job_id} (FAILURE_ACTION=drain)"
+                exit 1
+                ;;
+            remediate)
+                if [[ "$remediation" == "reboot" || "$remediation" == "replace" ]]; then
+                    local fail_reason="Action:${remediation^}"
+                    log "DCGM FAILED — setting node State=FAIL Reason=${fail_reason} for HyperPod ${remediation} (FAILURE_ACTION=remediate)"
+                    scontrol update NodeName="$NODE_HOSTNAME" State=FAIL Reason="$fail_reason" \
+                        || log "WARNING: scontrol update State=FAIL failed for $NODE_HOSTNAME"
+                else
+                    log "DCGM FAILED (remediation=${remediation}${reason:+, reason=${reason}}) — no hardware remediation needed, job ${job_id} proceeds (FAILURE_ACTION=remediate)"
+                fi
+                exit 0
+                ;;
+            *)
+                log "ERROR: Invalid FAILURE_ACTION '${FAILURE_ACTION}' — must be none, drain, or remediate. Allowing job ${job_id} to proceed."
+                exit 0
+                ;;
+        esac
     fi
 }
 

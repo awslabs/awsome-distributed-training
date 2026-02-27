@@ -348,7 +348,7 @@ cat /fsx/ubuntu/prolog_logs/<hostname>_prolog_<job_id>.log
 * It first checks a local cache — if the node passed DCGM within the last hour, it skips the test and your job starts immediately without delay.
 * If no valid cache exists, it runs a DCGM Level 2 diagnostic (~2 minutes).
 * If the test passes — your job starts normally.
-* If the test fails — the node can be drained (if DRAIN_ON_FAILURE set to true), and Slurm blocked your actual job from running.
+* If the test fails — behavior depends on the `FAILURE_ACTION` setting (see below).
 * If the test is inconclusive (e.g., dcgmi crashed) — the node is marked Skipped and your job proceeds (conservative approach to avoid blocking jobs).
 
 ### Configurable Defaults
@@ -359,10 +359,18 @@ You can customize the prolog behavior by editing the top of `prolog_dcgm.sh`:
 readonly DCGM_LEVEL=2                        # DCGM diagnostic level (2-4)
 readonly CACHE_TTL_HOURS=1                   # If a cached result exists and is less than CACHE_TTL_HOURS hours old, skip the prolog check. Set to 0 to disable caching entirely.
 readonly UPDATE_FEATURES=true                # Update Slurm node features
-readonly DRAIN_ON_FAILURE=false              # If true, exit 1 on failure so Slurm drains the node and requeues the job. If false, only update the feature to Failed and let the job proceed.
+readonly FAILURE_ACTION="none"               # Action on DCGM failure: "none", "drain", or "remediate"
 readonly PROLOG_BASE_DIR="/fsx/ubuntu/health_check_prolog"
 readonly LOG_DIR="${PROLOG_BASE_DIR}/logs"
 readonly CACHE_DIR="${PROLOG_BASE_DIR}/cache"
 ```
+
+#### `FAILURE_ACTION` Options
+
+| Value | On DCGM Failure | Exit Code | Effect |
+|---|---|---|---|
+| `none` | Updates Slurm feature to `HealthCheck:Failed`. Job proceeds normally. | `exit 0` | No drain, no reboot/replace. Useful for monitoring without disrupting workloads. |
+| `drain` | Updates Slurm feature to `HealthCheck:Failed`. Exits with code 1. | `exit 1` | Slurm drains the node and requeues the job to a healthy node. No reboot/replace. |
+| `remediate` | Updates Slurm feature to `HealthCheck:Failed`. If DCGM indicates `reboot` or `replace`, sets node `State=FAIL` with the appropriate reason so HyperPod can act on it. | `exit 0` | Node is taken out of service by HyperPod for reboot or replacement. If no hardware remediation is needed (DCGM remediation is `none`), behaves like `none`. |
 
 Level 2 is recommended for the prolog because it takes only ~2 minutes. Higher levels (3 or 4) would delay job start significantly.
