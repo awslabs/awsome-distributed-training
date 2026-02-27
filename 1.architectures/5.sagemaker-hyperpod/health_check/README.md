@@ -307,7 +307,7 @@ sbatch --time=240 --output=/fsx/ubuntu/dhc/management_%j.log health_check_orches
 
 ## Automatic Pre-Job DCGM Checks (Slurm Prolog)
 
-If you want every job to automatically verify GPU health before it starts, you can configure the Slurm Prolog. This runs a DCGM Level 2 check each time a node is allocated to a job. If the check fails, the node is drained and the job is re-queued to a healthy node.
+If you want every job to automatically verify GPU health before it starts, you can configure the Slurm Prolog. This runs a DCGM Level 2 check each time a node is allocated to a job. If the check fails, the behavior is controlled by the `FAILURE_ACTION` setting in `prolog_dcgm.sh` — by default (`"none"`), the node is marked `HealthCheck:Failed` but the job proceeds normally. Set `FAILURE_ACTION="drain"` to drain the node and requeue the job, or `"remediate"` to trigger HyperPod reboot/replacement.
 
 
 ### Step 1: Place Scripts on Shared Storage
