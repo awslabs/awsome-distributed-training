@@ -126,18 +126,12 @@ module "hyperpod_cluster" {
     module.sagemaker_iam_role
   ]
 
-  resource_name_prefix                  = var.resource_name_prefix
-  hyperpod_cluster_name                 = var.hyperpod_cluster_name
-  node_recovery                         = var.node_recovery
-  instance_groups                       = var.instance_groups
-  private_subnet_id                     = local.private_subnet_id
-  security_group_id                     = local.security_group_id
-  s3_bucket_name                        = local.s3_bucket_name
-  sagemaker_iam_role_name               = local.sagemaker_iam_role_name
-  use_training_plan                     = var.use_training_plan
-  training_plan_arn                     = var.training_plan_arn
-  training_plan_instance_group_name     = var.training_plan_instance_group_name
-  training_plan_expected_instance_type  = var.training_plan_expected_instance_type
-  training_plan_expected_instance_count = var.training_plan_expected_instance_count
-
+  resource_name_prefix    = var.resource_name_prefix
+  hyperpod_cluster_name   = var.hyperpod_cluster_name
+  node_recovery           = var.node_recovery
+  instance_groups         = var.instance_groups
+  private_subnet_id       = local.private_subnet_id
+  security_group_id       = local.security_group_id
+  s3_bucket_name          = local.s3_bucket_name
+  sagemaker_iam_role_name = local.sagemaker_iam_role_name
 }

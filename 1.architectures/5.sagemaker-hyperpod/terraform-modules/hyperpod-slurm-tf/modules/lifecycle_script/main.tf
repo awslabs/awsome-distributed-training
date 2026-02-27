@@ -7,10 +7,10 @@ locals {
       controller_group = "controller-machine"
       login_group      = "login-nodes"
       worker_groups = [
-        for name, config in var.instance_groups : {
-          instance_group_name = name
-          partition_name      = name == "controller-machine" ? null : "dev"
-        } if name != "controller-machine"
+        for ig in var.instance_groups : {
+          instance_group_name = ig.name
+          partition_name      = ig.name == "controller-machine" ? null : "dev"
+        } if ig.name != "controller-machine"
       ]
       fsx_dns_name  = var.fsx_lustre_dns_name
       fsx_mountname = var.fsx_lustre_mount_name
