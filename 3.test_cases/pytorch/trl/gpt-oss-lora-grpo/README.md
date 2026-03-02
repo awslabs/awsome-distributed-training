@@ -66,6 +66,9 @@ docker context use colima
 Use `/artifacts/build_push.sh` to build and push the image to Amazon ECR.
 ```bash
 source env_vars
+# Build the shared TRL base image first
+docker build -t trl-base:latest ../../../
+# Build and push the GPT-OSS image
 cd artifacts
 ./build_push.sh
 cd ..
