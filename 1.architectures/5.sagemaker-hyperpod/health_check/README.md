@@ -4,7 +4,7 @@
 
 ## **Key Capabilities**
 
-* **Bring Your Own Health Checks** — The orchestrator is script-agnostic. Write your own diagnostic scripts and run them through the framework with minimal configuration.A DCGM diagnostic script is provided as a reference implementation.
+* **Bring Your Own Health Checks** — The orchestrator is script-agnostic. Write your own diagnostic scripts and run them through the framework with minimal configuration. A DCGM diagnostic script is provided as a reference implementation.
 * **Automatic Node Tagging** — After each check, nodes are automatically tagged with a Slurm feature (`HealthCheck:Passed`, `HealthCheck:Failed`, or `HealthCheck:Skipped`), allowing users to easily target healthy nodes when submitting jobs.
 * **Automatic Remediation** — When a node fails a health check, it is automatically marked as failed and flagged for reboot or replacement—no manual intervention required.
 * **Parallel Execution** — Health checks are distributed and executed simultaneously across all targeted nodes, significantly reducing end-to-end diagnostic time.
