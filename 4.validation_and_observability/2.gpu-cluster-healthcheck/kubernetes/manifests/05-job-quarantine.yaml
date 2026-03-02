@@ -1,0 +1,176 @@
+# Quarantine Job Template -- Intensive checks on a suspect node
+#
+# Usage:
+#   sed 's/TARGET_NODE_NAME/ip-10-0-1-123/g' 05-job-quarantine.yaml | kubectl apply -f -
+#
+# This runs DCGM L4 (check 4) and EFA loopback (check 6) on the target node.
+# The node should be cordoned first:
+#   kubectl cordon <node>
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-quarantine-TARGET_NODE_NAME
+  namespace: gpu-healthcheck
+  labels:
+    app.kubernetes.io/name: gpu-healthcheck
+    app.kubernetes.io/component: quarantine
+    gpu-healthcheck.aws-samples.io/target-node: TARGET_NODE_NAME
+spec:
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-healthcheck
+        app.kubernetes.io/component: quarantine
+    spec:
+      restartPolicy: Never
+      serviceAccountName: gpu-healthcheck
+
+      nodeSelector:
+        kubernetes.io/hostname: TARGET_NODE_NAME
+
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: gpu-healthcheck.aws-samples.io/unhealthy
+          operator: Exists
+          effect: NoSchedule
+        - key: gpu-healthcheck.aws-samples.io/maintenance
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/unschedulable
+          operator: Exists
+          effect: NoSchedule
+
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      containers:
+        - name: quarantine
+          image: YOUR_REGISTRY/gpu-healthcheck:latest  # Replace with your image
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              NODE="TARGET_NODE_NAME"
+              LABEL_PREFIX="gpu-healthcheck.aws-samples.io"
+              RESULTS_DIR="/tmp/gpu-healthcheck-quarantine"
+              export RESULTS_DIR
+
+              echo "=== GPU Quarantine Check: ${NODE} ==="
+
+              # Label node to signal dcgm-exporter should back off
+              kubectl label node "${NODE}" \
+                  "${LABEL_PREFIX}/mode=quarantine" --overwrite
+
+              # Run DCGM L4 (check 4)
+              echo "--- Running DCGM L4 diagnostics ---"
+              /opt/gpu-healthcheck/gpu-healthcheck.sh \
+                  --check 4 --exclusive --json || true
+
+              # Run EFA loopback (check 6)
+              echo "--- Running EFA loopback ---"
+              /opt/gpu-healthcheck/gpu-healthcheck.sh \
+                  --check 6 --json || true
+
+              # Determine overall severity
+              RESULT=$(python3 /opt/gpu-healthcheck/kubernetes/determine-severity.py \
+                  --results-dir "${RESULTS_DIR}")
+              STATUS="${RESULT%%:*}"
+              SEVERITY="${RESULT##*:}"
+
+              echo "=== Result: status=${STATUS}, severity=${SEVERITY} ==="
+
+              # Patch node labels
+              kubectl label node "${NODE}" \
+                  "${LABEL_PREFIX}/status=${STATUS}" \
+                  "${LABEL_PREFIX}/severity=${SEVERITY}" \
+                  "${LABEL_PREFIX}/mode-" \
+                  --overwrite
+
+              # Write recommendation annotation
+              SUMMARY=$(python3 -c "
+              import json
+              from datetime import datetime, timezone
+              print(json.dumps({
+                  'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                  'node': '${NODE}',
+                  'suite': 'quarantine',
+                  'status': '${STATUS}',
+                  'severity': '${SEVERITY}',
+                  'recommendation': 'replace' if '${SEVERITY}' == 'ISOLATE' else 'investigate',
+              }, separators=(',', ':')))
+              ")
+              kubectl annotate node "${NODE}" \
+                  "${LABEL_PREFIX}/quarantine-result=${SUMMARY}" \
+                  --overwrite
+
+          securityContext:
+            privileged: true
+
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "8"
+              memory: 8Gi
+
+          volumeMounts:
+            - name: dev
+              mountPath: /dev
+            - name: proc-host
+              mountPath: /proc
+              readOnly: true
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            - name: infiniband
+              mountPath: /dev/infiniband
+            - name: var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: run-log-journal
+              mountPath: /run/log/journal
+              readOnly: true
+            - name: machine-id
+              mountPath: /etc/machine-id
+              readOnly: true
+            - name: config
+              mountPath: /opt/gpu-healthcheck/instance-profiles.conf
+              subPath: instance-profiles.conf
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: proc-host
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: infiniband
+          hostPath:
+            path: /dev/infiniband
+        - name: var-log
+          hostPath:
+            path: /var/log
+        - name: run-log-journal
+          hostPath:
+            path: /run/log/journal
+        - name: machine-id
+          hostPath:
+            path: /etc/machine-id
+        - name: config
+          configMap:
+            name: gpu-healthcheck-config
+        - name: tmp
+          emptyDir: {}

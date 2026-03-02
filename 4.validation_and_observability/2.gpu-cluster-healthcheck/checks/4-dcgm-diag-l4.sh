@@ -27,7 +27,7 @@ GPU_TELEMETRY_SERVICES=(
 STOPPED_SERVICES=()
 
 restore_services() {
-    if [[ ${#STOPPED_SERVICES[@]} -gt 0 ]]; then
+    if [[ ${#STOPPED_SERVICES[@]} -gt 0 ]] && systemctl_available; then
         log_info "Restoring previously stopped services"
         for svc in "${STOPPED_SERVICES[@]}"; do
             log_info "Restarting ${svc}.service"
@@ -103,13 +103,15 @@ run_check() {
 
     # ── Pre-flight 3: Stop concurrent GPU telemetry ──────────────────────
     log_info "Pre-flight: Stopping concurrent GPU telemetry services"
-    for svc in "${GPU_TELEMETRY_SERVICES[@]}"; do
-        if systemctl is-active "${svc}.service" > /dev/null 2>&1; then
-            log_warn "Stopping ${svc}.service for duration of L4 test"
-            systemctl stop "${svc}.service" 2>/dev/null || true
-            STOPPED_SERVICES+=("${svc}")
-        fi
-    done
+    if systemctl_available; then
+        for svc in "${GPU_TELEMETRY_SERVICES[@]}"; do
+            if systemctl is-active "${svc}.service" > /dev/null 2>&1; then
+                log_warn "Stopping ${svc}.service for duration of L4 test"
+                systemctl stop "${svc}.service" 2>/dev/null || true
+                STOPPED_SERVICES+=("${svc}")
+            fi
+        done
+    fi
 
     # Also check for dcgm-exporter running as container/process
     local exporter_pids
@@ -124,7 +126,7 @@ run_check() {
     log_info "Pre-flight: Checking nv-hostengine"
     if ! pgrep -x nv-hostengine > /dev/null 2>&1; then
         log_warn "nv-hostengine not running -- starting"
-        if systemctl is-enabled nvidia-dcgm.service > /dev/null 2>&1; then
+        if systemctl_available && systemctl is-enabled nvidia-dcgm.service > /dev/null 2>&1; then
             log_warn "DCGM managed by systemd -- be aware systemd may auto-restart services"
             log_warn "Consider: systemctl stop nvidia-dcgm && nv-hostengine"
         fi

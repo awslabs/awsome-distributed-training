@@ -1,0 +1,166 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-healthcheck-agent
+  namespace: gpu-healthcheck
+  labels:
+    app.kubernetes.io/name: gpu-healthcheck
+    app.kubernetes.io/component: agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gpu-healthcheck
+      app.kubernetes.io/component: agent
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: "25%"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-healthcheck
+        app.kubernetes.io/component: agent
+    spec:
+      # Schedule only on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+
+      # Must not be evicted -- health checks are critical infrastructure
+      priorityClassName: system-node-critical
+
+      # Host access for IMDS, EFA loopback, and fabricmanager detection
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      serviceAccountName: gpu-healthcheck
+
+      # Tolerate GPU taints and our own health check taints
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: gpu-healthcheck.aws-samples.io/unhealthy
+          operator: Exists
+          effect: NoSchedule
+        - key: gpu-healthcheck.aws-samples.io/maintenance
+          operator: Exists
+          effect: NoSchedule
+
+      terminationGracePeriodSeconds: 30
+
+      containers:
+        - name: agent
+          image: YOUR_REGISTRY/gpu-healthcheck:latest  # Replace with your image
+          imagePullPolicy: Always
+
+          env:
+            # Node name from downward API
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            # Agent configuration from ConfigMap
+            - name: CHECK_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: gpu-healthcheck-config
+                  key: CHECK_INTERVAL
+            - name: DCGM_L2_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: gpu-healthcheck-config
+                  key: DCGM_L2_INTERVAL
+            - name: CHECKS_LIGHTWEIGHT
+              valueFrom:
+                configMapKeyRef:
+                  name: gpu-healthcheck-config
+                  key: CHECKS_LIGHTWEIGHT
+            - name: ENABLE_TAINT
+              valueFrom:
+                configMapKeyRef:
+                  name: gpu-healthcheck-config
+                  key: ENABLE_TAINT
+            - name: ENABLE_LABEL
+              valueFrom:
+                configMapKeyRef:
+                  name: gpu-healthcheck-config
+                  key: ENABLE_LABEL
+            - name: DCGM_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: gpu-healthcheck-config
+                  key: DCGM_TIMEOUT
+            # Results directory inside the container
+            - name: RESULTS_DIR
+              value: /tmp/gpu-healthcheck-agent
+
+          securityContext:
+            privileged: true
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+
+          # NOTE: This DaemonSet does NOT request nvidia.com/gpu resources.
+          # It accesses GPUs via device files in privileged mode so that it
+          # does not consume GPU slots from the device plugin allocator.
+
+          volumeMounts:
+            - name: dev
+              mountPath: /dev
+            - name: proc-host
+              mountPath: /proc
+              readOnly: true
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            - name: infiniband
+              mountPath: /dev/infiniband
+            - name: var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: run-log-journal
+              mountPath: /run/log/journal
+              readOnly: true
+            - name: machine-id
+              mountPath: /etc/machine-id
+              readOnly: true
+            - name: config
+              mountPath: /opt/gpu-healthcheck/instance-profiles.conf
+              subPath: instance-profiles.conf
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: proc-host
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: infiniband
+          hostPath:
+            path: /dev/infiniband
+        - name: var-log
+          hostPath:
+            path: /var/log
+        - name: run-log-journal
+          hostPath:
+            path: /run/log/journal
+        - name: machine-id
+          hostPath:
+            path: /etc/machine-id
+        - name: config
+          configMap:
+            name: gpu-healthcheck-config
+        - name: tmp
+          emptyDir: {}

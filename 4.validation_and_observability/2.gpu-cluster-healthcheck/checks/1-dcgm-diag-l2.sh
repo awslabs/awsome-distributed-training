@@ -28,7 +28,7 @@ run_check() {
             log_warn "nv-hostengine is not running -- attempting to start"
 
             # Check if managed by systemd
-            if systemctl is-active nvidia-dcgm.service > /dev/null 2>&1; then
+            if systemctl_available && systemctl is-active nvidia-dcgm.service > /dev/null 2>&1; then
                 log_warn "DCGM is managed by systemd (nvidia-dcgm.service)"
                 log_warn "Starting via systemctl to avoid conflicts"
                 run_cmd systemctl start nvidia-dcgm.service

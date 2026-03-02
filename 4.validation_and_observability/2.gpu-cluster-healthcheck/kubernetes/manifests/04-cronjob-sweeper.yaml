@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gpu-healthcheck-sweeper
+  namespace: gpu-healthcheck
+  labels:
+    app.kubernetes.io/name: gpu-healthcheck
+    app.kubernetes.io/component: sweeper
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: gpu-healthcheck
+            app.kubernetes.io/component: sweeper
+        spec:
+          restartPolicy: Never
+          serviceAccountName: gpu-healthcheck
+
+          containers:
+            - name: sweeper
+              image: YOUR_REGISTRY/gpu-healthcheck:latest  # Replace with your image
+              command: ["/opt/gpu-healthcheck/kubernetes/sweeper.sh"]
+
+              env:
+                - name: MAX_NODES_PER_SWEEP
+                  value: "10"
+                - name: SWEEP_IMAGE
+                  value: YOUR_REGISTRY/gpu-healthcheck:latest  # Replace with your image
+                - name: SWEEP_NAMESPACE
+                  value: gpu-healthcheck
+                - name: JOB_TIMEOUT
+                  value: "900"
+
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi

@@ -62,7 +62,7 @@ Usage: $(basename "$0") [OPTIONS]
 Options:
   --suite lightweight|intensive    Run predefined check suite
   --check <N|name>                 Run individual check (0-6 or by name)
-  --prolog                         Prolog mode: checks 0-2, Slurm-compatible exit
+  --prolog                         Prolog mode: checks 0-2, fail-fast with non-zero exit
   --exclusive                      Confirm exclusive node access (required for intensive)
   --results-dir <path>             Output directory (default: /tmp/gpu-healthcheck-<ts>)
   --timeout <seconds>              Per-check timeout (default: ${CHECK_TIMEOUT})

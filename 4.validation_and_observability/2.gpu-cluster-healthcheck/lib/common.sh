@@ -220,6 +220,11 @@ run_with_timeout() {
     timeout "${timeout_secs}" "$@"
 }
 
+# ─── Environment Detection ─────────────────────────────────────────────────
+systemctl_available() {
+    command -v systemctl &>/dev/null && systemctl --version &>/dev/null 2>&1
+}
+
 # ─── Pre-flight: source instance profile on load ────────────────────────────
 
 preflight_checks() {

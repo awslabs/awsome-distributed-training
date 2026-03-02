@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-healthcheck
+  labels:
+    app.kubernetes.io/name: gpu-healthcheck
+    app.kubernetes.io/part-of: gpu-healthcheck

@@ -1,6 +1,6 @@
 # GPU Cluster Health Check Suite
 
-A comprehensive, open-source health check suite for self-managed GPU clusters running Slurm on AWS. This suite leverages publicly available tools (DCGM, NCCL tests, EFA utilities, nvidia-smi) to validate GPU, network, and interconnect health on Slurm-based clusters.
+A comprehensive, open-source health check suite for self-managed GPU clusters on AWS, supporting both Slurm and Kubernetes (EKS). This suite leverages publicly available tools (DCGM, NCCL tests, EFA utilities, nvidia-smi) to validate GPU, network, and interconnect health.
 
 The suite provides two operational modes: **lightweight checks** for regular use (prolog/epilog, cron) and **intensive checks** for quarantine and post-mortem scenarios. It follows a **replace, don't repair** operational model -- on AWS, the primary remediation for confirmed hardware faults is instance replacement rather than on-node repair.
 
@@ -25,7 +25,7 @@ git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/4.validation_and_observability/2.gpu-cluster-healthcheck
 
 # Make all scripts executable
-chmod +x gpu-healthcheck.sh checks/*.sh slurm/*.sh examples/*.sh
+chmod +x gpu-healthcheck.sh checks/*.sh slurm/*.sh slurm/examples/*.sh
 
 # Run a quick validation (dry-run mode, no GPU required)
 ./gpu-healthcheck.sh --suite lightweight --dry-run
@@ -69,10 +69,23 @@ cat /tmp/gpu-healthcheck-*/summary.json | python3 -m json.tool
 │   ├── prolog-gpu-healthcheck.sh      # Slurm prolog (checks 0-2)
 │   ├── sbatch-lightweight.sh          # sbatch job for lightweight suite
 │   ├── sbatch-intensive.sh            # sbatch job for intensive suite
-│   └── sbatch-quarantine-workflow.sh  # Full quarantine decision workflow
-└── examples/
-    ├── cron-rolling-sweep.sh          # Periodic sweep across idle nodes
-    └── slurm-epilog-example.sh        # Epilog with exit-code routing
+│   ├── sbatch-quarantine-workflow.sh  # Full quarantine decision workflow
+│   └── examples/
+│       ├── cron-rolling-sweep.sh      # Periodic sweep across idle nodes
+│       └── slurm-epilog-example.sh    # Epilog with exit-code routing
+├── kubernetes/
+│   ├── README.md                      # Kubernetes deployment documentation
+│   ├── Dockerfile                     # Container image build
+│   ├── agent.sh                       # DaemonSet agent entrypoint
+│   ├── sweeper.sh                     # CronJob sweeper entrypoint
+│   ├── determine-severity.py          # Single-node severity aggregator
+│   └── manifests/
+│       ├── 00-namespace.yaml          # gpu-healthcheck namespace
+│       ├── 01-configmap.yaml          # Instance profiles + agent config
+│       ├── 02-rbac.yaml               # ServiceAccount, ClusterRole, Binding
+│       ├── 03-daemonset-agent.yaml    # Lightweight check agent
+│       ├── 04-cronjob-sweeper.yaml    # Rolling DCGM L2 sweep
+│       └── 05-job-quarantine.yaml     # Intensive check template
 ```
 
 ### Check Levels
@@ -91,7 +104,7 @@ All check results are classified into four severity levels that map directly to 
 | Severity | Meaning | Action |
 |----------|---------|--------|
 | **ISOLATE** | Critical hardware fault confirmed | Drain node, initiate instance replacement |
-| **REBOOT** | Node reboot required to clear error | Drain/cordon node, reboot (`scontrol reboot nextstate=resume`) |
+| **REBOOT** | Node reboot required to clear error | Drain/cordon node, reboot, re-test |
 | **RESET** | GPU reset may resolve the issue | Attempt GPU reset (`nvidia-smi --gpu-reset`); may require power-cycle |
 | **MONITOR** | Minor anomaly, not service-affecting | Keep in service, flag for review |
 
@@ -313,7 +326,7 @@ EFA_MIN_BW=25 ./gpu-healthcheck.sh --check 6
 
 Before running DCGM Level 4:
 
-- [ ] Node is drained from Slurm (`scontrol update NodeName=X State=DRAIN`)
+- [ ] Node is drained from the scheduler (no new jobs/pods will be placed)
 - [ ] No other GPU processes running (`nvidia-smi --query-compute-apps=pid --format=csv`)
 - [ ] MIG is disabled (`nvidia-smi -i 0 --query-gpu=mig.mode.current --format=csv,noheader`)
 - [ ] DCGM exporter stopped (`systemctl stop dcgm-exporter` or container stopped)
@@ -326,7 +339,7 @@ DCGM diagnostic results include a `warning_level` field per test per GPU:
 
 | Warning Level | Severity | Action |
 |--------------|----------|--------|
-| 3 | **ISOLATE** | Drain node from Slurm, initiate instance replacement |
+| 3 | **ISOLATE** | Drain node, initiate instance replacement |
 | 2 | **RESET** | Attempt GPU reset via `nvidia-smi --gpu-reset` |
 | 1 | **MONITOR** | Keep in service, flag for review |
 | 0 | **PASS** | No action required |
@@ -350,63 +363,26 @@ The DCGM host engine (`nv-hostengine`) must be running for diagnostics. Be aware
 
 ## Slurm Integration
 
-### Prolog Setup
+The `slurm/` directory provides Slurm-native integration -- prolog/epilog hooks, sbatch job wrappers, and cron-based sweep automation. See [`slurm/README.md`](slurm/README.md) for setup instructions.
 
-Add to `slurm.conf`:
+| Script | Purpose |
+|--------|---------|
+| `prolog-gpu-healthcheck.sh` | Prolog hook -- checks 0 + 2 before every job |
+| `sbatch-lightweight.sh` | sbatch wrapper for lightweight suite |
+| `sbatch-intensive.sh` | sbatch wrapper for intensive suite |
+| `sbatch-quarantine-workflow.sh` | Quarantine decision workflow |
+| `examples/cron-rolling-sweep.sh` | Periodic sweep of idle nodes |
+| `examples/slurm-epilog-example.sh` | Epilog with exit-code routing |
 
-```conf
-Prolog=/path/to/2.gpu-cluster-healthcheck/slurm/prolog-gpu-healthcheck.sh
-PrologTimeout=900   # 15 minutes
-```
+## Kubernetes (EKS) Support
 
-By default, the prolog runs only checks 0 (nvidia-smi) and 2 (EFA enumeration) -- completing in ~8 seconds. DCGM L2 is **off by default** in prolog because it adds minutes of silence before job output appears.
+The `kubernetes/` directory provides a full Kubernetes-native deployment for Amazon EKS clusters. See [`kubernetes/README.md`](kubernetes/README.md) for setup instructions.
 
-> **Note:** Prolog output goes to syslog / slurmd logs, not to job output files.
-
-To enable DCGM L2 in the prolog (adds 2-10 minutes):
-
-```conf
-PrologFlags=Contain
-PrologSlurmctld=
-# In the prolog environment:
-# GPU_HEALTHCHECK_PROLOG_ENABLE_DCGM=1
-```
-
-Or set globally in `/etc/default/gpu-healthcheck`:
-```bash
-GPU_HEALTHCHECK_PROLOG_ENABLE_DCGM=1
-```
-
-A non-zero exit code from the prolog causes Slurm to drain the node and requeue the job.
-
-### sbatch Examples
-
-```bash
-# Lightweight suite across 4 nodes
-sbatch -N 4 -p gpu slurm/sbatch-lightweight.sh
-
-# Intensive suite on 2 nodes (exclusive)
-sbatch -N 2 -p maintenance --exclusive slurm/sbatch-intensive.sh
-
-# Quarantine workflow on a suspect node
-sbatch -N 1 -w suspect-node-001 --exclusive slurm/sbatch-quarantine-workflow.sh
-```
-
-### Cron Sweep
-
-Set up a periodic sweep of idle GPU nodes:
-
-```bash
-# Check up to 10 idle nodes every 4 hours
-echo "0 */4 * * * /path/to/examples/cron-rolling-sweep.sh >> /var/log/gpu-sweep.log 2>&1" | crontab -
-```
-
-### Epilog Pattern
-
-The `examples/slurm-epilog-example.sh` demonstrates exit-code routing after job completion:
-- Normal exit (0): quick nvidia-smi check only
-- Signal kills (137, 139): full prolog-level check
-- Any nvidia-smi failure: immediate node drain
+| Component | K8s Resource | Purpose |
+|-----------|-------------|---------|
+| **Agent** | DaemonSet | Continuous lightweight checks on every GPU node |
+| **Sweeper** | CronJob | Rolling DCGM L2 sweep on idle nodes |
+| **Quarantine** | Job (template) | Intensive diagnostics on suspect nodes |
 
 ## Decision Flow
 
@@ -417,8 +393,7 @@ The recommended operational workflow for handling suspected GPU issues:
                        │
                        ▼
               ┌─────────────┐
-              │  Drain Node  │  scontrol update NodeName=X State=DRAIN
-              │  from Slurm  │
+              │  Drain Node  │
               └──────┬──────┘
                      │
                      ▼

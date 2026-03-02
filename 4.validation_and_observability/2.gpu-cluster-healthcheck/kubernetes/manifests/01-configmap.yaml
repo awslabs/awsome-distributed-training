@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-healthcheck-config
+  namespace: gpu-healthcheck
+  labels:
+    app.kubernetes.io/name: gpu-healthcheck
+    app.kubernetes.io/component: config
+data:
+  # Agent configuration
+  CHECK_INTERVAL: "300"
+  DCGM_L2_INTERVAL: "21600"
+  CHECKS_LIGHTWEIGHT: "0 2 3"
+  ENABLE_TAINT: "true"
+  ENABLE_LABEL: "true"
+
+  # Check timeouts
+  DCGM_TIMEOUT: "900"
+  CHECK_TIMEOUT: "900"
+
+  # Instance profiles -- same format as instance-profiles.conf
+  # <instance-type>|<gpu-count>|<efa-count>|<nvlink-expected>|<efa-provider>
+  instance-profiles.conf: |
+    p4d.24xlarge|8|4|true|efa
+    p4de.24xlarge|8|4|true|efa
+    p5.48xlarge|8|32|true|efa
+    p5e.48xlarge|8|32|true|efa
+    p5en.48xlarge|8|16|true|efa
+    p6-b200.48xlarge|8|8|true|efa
+    g6.48xlarge|8|1|false|efa
+    g6.xlarge|1|0|false|efa

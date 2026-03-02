@@ -45,6 +45,8 @@ run_check() {
         num_nodes="${SLURM_JOB_NUM_NODES}"
     elif [[ -n "${SLURM_NNODES:-}" ]]; then
         num_nodes="${SLURM_NNODES}"
+    elif [[ -n "${HEALTHCHECK_NUM_NODES:-}" ]]; then
+        num_nodes="${HEALTHCHECK_NUM_NODES}"
     fi
 
     if [[ "${num_nodes}" -lt 2 ]]; then

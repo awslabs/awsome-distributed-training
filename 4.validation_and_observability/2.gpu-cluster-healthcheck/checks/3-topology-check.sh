@@ -88,18 +88,26 @@ run_check() {
 
         # Step 3a: Check Fabric Manager status
         log_info "Checking nvidia-fabricmanager service status"
-        if systemctl list-unit-files nvidia-fabricmanager.service 2>/dev/null | grep -q nvidia-fabricmanager; then
-            local fm_status
-            fm_status=$(systemctl is-active nvidia-fabricmanager 2>/dev/null || true)
-            if [[ "${fm_status}" != "active" ]]; then
-                check_fail "${CHECK_NAME}" \
-                    "nvidia-fabricmanager service is not running (status: ${fm_status})" "RESET"
-                failures=$((failures + 1))
+        if systemctl_available; then
+            if systemctl list-unit-files nvidia-fabricmanager.service 2>/dev/null | grep -q nvidia-fabricmanager; then
+                local fm_status
+                fm_status=$(systemctl is-active nvidia-fabricmanager 2>/dev/null || true)
+                if [[ "${fm_status}" != "active" ]]; then
+                    check_fail "${CHECK_NAME}" \
+                        "nvidia-fabricmanager service is not running (status: ${fm_status})" "RESET"
+                    failures=$((failures + 1))
+                else
+                    log_verbose "nvidia-fabricmanager is active"
+                fi
             else
-                log_verbose "nvidia-fabricmanager is active"
+                log_verbose "nvidia-fabricmanager service not found -- skipping"
             fi
+        elif pgrep -f "nv-fabricmanager" > /dev/null 2>&1; then
+            log_verbose "nvidia-fabricmanager is running (detected via pgrep)"
         else
-            log_verbose "nvidia-fabricmanager service not found -- skipping"
+            check_fail "${CHECK_NAME}" \
+                "nvidia-fabricmanager process not detected" "RESET"
+            failures=$((failures + 1))
         fi
 
         # Step 3b: Query NVLink error counters
