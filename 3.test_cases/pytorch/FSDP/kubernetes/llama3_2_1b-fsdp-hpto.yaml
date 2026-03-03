@@ -49,7 +49,7 @@ spec:
                         operator: In
                         values:
                           - Schedulable
-                      - key: sagemaker.amazonaws.com/compute-type
+                      - key: node.kubernetes.io/instance-type
                         operator: In
                         values:
                           - '${INSTANCE_TYPE}'
