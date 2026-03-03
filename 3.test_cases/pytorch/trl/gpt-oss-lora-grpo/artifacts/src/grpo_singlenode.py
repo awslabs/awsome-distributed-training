@@ -3,7 +3,7 @@
 
 #!/usr/bin/env python3
 """
-GRPO Multi-Node Training Script with DDP
+GRPO Single-Node Training Script with DDP
 
 Fine-tunes GPT-OSS 20B to improve final answer language matching.
 Uses DDP for multi-node distributed training with device_map="auto" for model sharding.
