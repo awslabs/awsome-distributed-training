@@ -54,15 +54,25 @@ while [ $attempt -lt $MAX_RETRIES ]; do
     fi
 done
 
+# Add textfile collector for NCCL metrics if the inspector directory exists
+NCCL_VOLUME=""
+NCCL_FLAGS=""
+if [ -d "/var/lib/node_exporter/nccl_inspector" ]; then
+    NCCL_VOLUME="-v /var/lib/node_exporter:/var/lib/node_exporter:ro"
+    NCCL_FLAGS="--collector.textfile --collector.textfile.directory=/var/lib/node_exporter/nccl_inspector"
+fi
+
 # Run the Docker container with appropriate configurations
 if sudo docker run -d --restart always \
     --name=$CONTAINER_NAME \
     --net="host" \
     --pid="host" \
     -v "/:/host:ro,rslave" \
+    $NCCL_VOLUME \
     $IMAGE \
     --path.rootfs=/host \
-    $ADDITIONAL_FLAGS; then
+    $ADDITIONAL_FLAGS \
+    $NCCL_FLAGS; then
     echo "Successfully started Node Exporter on node"
     exit 0
 else

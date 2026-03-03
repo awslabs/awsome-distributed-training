@@ -50,6 +50,14 @@ class ObservabilityConfig:
     # Set true if you want to collect advanced metrics
     advanced_metrics = False
 
+    # NCCL Inspector metrics via node_exporter textfile collector.
+    # Requires the NCCL Inspector profiler plugin (.so) to be pre-built and installed on compute nodes.
+    # Build from NCCL source (post-v2.28.3): plugins/profiler/inspector/
+    # See: https://github.com/NVIDIA/nccl/tree/master/plugins/profiler/inspector
+    nccl_metrics_enabled = False
+    nccl_metrics_dump_interval_seconds = 30
+    nccl_profiler_plugin_path = "/opt/nccl-inspector/libnccl-profiler-inspector.so"
+
 
 # Configuration parameters for ActiveDirectory/LDAP/SSSD
 class SssdConfig:

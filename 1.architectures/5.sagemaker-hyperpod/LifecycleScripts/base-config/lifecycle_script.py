@@ -238,7 +238,17 @@ def main(args):
             except Exception as e:
                 print(f"[WARN] fsx_auto_detect.sh failed: {e}. Continuing without mount-based home directory setup.")
 
-        ExecuteBashScript("./start_slurm.sh").run(node_type, ",".join(controllers))
+        nccl_metrics_flag = "0"
+        nccl_dump_interval = "30"
+        nccl_plugin_path = ""
+        if Config.enable_observability:
+            from config import ObservabilityConfig
+            if ObservabilityConfig.nccl_metrics_enabled:
+                nccl_metrics_flag = "1"
+                nccl_dump_interval = str(ObservabilityConfig.nccl_metrics_dump_interval_seconds)
+                nccl_plugin_path = ObservabilityConfig.nccl_profiler_plugin_path
+
+        ExecuteBashScript("./start_slurm.sh").run(node_type, ",".join(controllers), nccl_metrics_flag, nccl_dump_interval, nccl_plugin_path)
         
         # Setup user associations for Slurm accounting (only on controller nodes)
         if node_type == SlurmNodeType.HEAD_NODE:
@@ -262,6 +272,9 @@ def main(args):
 
             if ObservabilityConfig.advanced_metrics:
                 cmd += ["--advanced"]
+
+            if ObservabilityConfig.nccl_metrics_enabled:
+                cmd += ["--nccl-metrics"]
             
             subprocess.run(cmd, cwd="./observability", check=True)
         

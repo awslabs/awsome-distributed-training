@@ -1,13 +1,19 @@
 #!/bin/bash
 
 # must be run as sudo
-# USAGE: start_slurm.sh <NODE_TYPE> [<CONTOLLER_ADDRESSES>]
+# USAGE: start_slurm.sh <NODE_TYPE> [<CONTOLLER_ADDRESSES>] [<SMHP_NCCL_METRICS>] [<SMHP_NCCL_DUMP_INTERVAL_SECONDS>] [<SMHP_NCCL_PLUGIN_PATH>]
 # - Where NODE_TYPE is one of follow values: controller, compute, login
+# - SMHP_NCCL_METRICS is "1" to enable NCCL Inspector task prolog
+# - SMHP_NCCL_DUMP_INTERVAL_SECONDS is the dump interval in seconds (default: 30)
+# - SMHP_NCCL_PLUGIN_PATH is the path to the NCCL Inspector .so plugin
 
 set -ex
 
 LOG_FILE="/var/log/provision/provisioning.log"
 CONTROLLER_IP_VALUES=($2)
+SMHP_NCCL_METRICS=$3
+SMHP_NCCL_DUMP_INTERVAL_SECONDS=${4:-30}
+SMHP_NCCL_PLUGIN_PATH=$5
 
 main() {
   echo "[INFO] START: Starting Slurm daemons"
@@ -36,6 +42,26 @@ main() {
       fi
   done
 
+  # Create NCCL Inspector task prolog script on all nodes before starting daemons
+  if [[ "$SMHP_NCCL_METRICS" == "1" ]]; then
+    echo "[INFO] Creating NCCL metrics task prolog script..."
+    DUMP_INTERVAL_MICROSECONDS=$((SMHP_NCCL_DUMP_INTERVAL_SECONDS * 1000000))
+
+    cat > /opt/slurm/etc/task_prolog.sh << EOF
+#!/bin/bash
+if [ ! -f ${SMHP_NCCL_PLUGIN_PATH} ]; then
+  echo "[WARN] NCCL Inspector plugin not found at ${SMHP_NCCL_PLUGIN_PATH}, skipping NCCL metrics" >&2
+  exit 0
+fi
+echo "export NCCL_PROFILER_PLUGIN=${SMHP_NCCL_PLUGIN_PATH}"
+echo "export NCCL_INSPECTOR_ENABLE=1"
+echo "export NCCL_INSPECTOR_PROM_DUMP=1"
+echo "export NCCL_INSPECTOR_DUMP_THREAD_INTERVAL_MICROSECONDS=${DUMP_INTERVAL_MICROSECONDS}"
+echo "export NCCL_INSPECTOR_DUMP_DIR=/var/lib/node_exporter/nccl_inspector/"
+EOF
+    chmod +x /opt/slurm/etc/task_prolog.sh
+  fi
+
   if [[ $1 == "controller" ]]; then
     echo "[INFO] This is a Controller node. Start slurm controller daemon..."
 
@@ -47,6 +73,12 @@ main() {
     echo "Prolog=${SLURM_SCRIPTS_DIR}/prolog.sh"  >> /opt/slurm/etc/slurm.conf
     echo "Epilog=${SLURM_SCRIPTS_DIR}/epilog.sh"  >> /opt/slurm/etc/slurm.conf
     echo "[INFO] Added Prolog and Epilog to /opt/slurm/etc/slurm.conf"
+
+    # Configure NCCL Inspector slurm.conf on controller
+    if [[ "$SMHP_NCCL_METRICS" == "1" ]]; then
+      echo "[INFO] Adding TaskProlog to slurm.conf..."
+      echo "TaskProlog=/opt/slurm/etc/task_prolog.sh" >> /opt/slurm/etc/slurm.conf
+    fi
 
     systemctl enable --now slurmctld
 

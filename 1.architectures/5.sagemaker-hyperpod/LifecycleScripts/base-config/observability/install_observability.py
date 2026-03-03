@@ -28,7 +28,7 @@ def create_file_from_template(template_path, output_path, replacements):
         output_file.write(content)
 
 
-def install_observability(node_type, prometheus_remote_write_url, advanced=False):
+def install_observability(node_type, prometheus_remote_write_url, advanced=False, nccl_metrics=False):
 
     region = get_region_from_resource_config()
     hostname = socket.gethostname()
@@ -36,6 +36,11 @@ def install_observability(node_type, prometheus_remote_write_url, advanced=False
     env_vars = os.environ.copy()
     env_vars["REGION"] = region
     env_vars["ADVANCED"] = "1" if advanced else "0"
+
+    if nccl_metrics and node_type == "compute":
+        path = "/var/lib/node_exporter/nccl_inspector"
+        os.makedirs(path, exist_ok=True)
+        os.chmod(path, 0o777)
 
     if node_type=="controller":
 
@@ -101,13 +106,14 @@ if __name__ == "__main__":
     argparser.add_argument('--node-type', action="store", required=True, help='Node type (controller, login, compute)')
     argparser.add_argument('--prometheus-remote-write-url', action="store", required=True, help='Prometheus remote write URL (e.g. https://aps-workspaces.us-west-2.amazonaws.com/workspaces/ws-e37c0ee4-7f7f-4f65-b72b-5455852d0c23/api/v1/remote_write)')
     argparser.add_argument('--advanced', action="store_true", default=False, help='Advanced setup (default: False)')
+    argparser.add_argument('--nccl-metrics', action="store_true", default=False, help='Enable NCCL metrics collection (default: False)')
     args = argparser.parse_args()
 
     assert args.node_type in ["controller", "login", "compute"]
 
     print("Starting observability installation")
 
-    install_observability(args.node_type, args.prometheus_remote_write_url, args.advanced)
+    install_observability(args.node_type, args.prometheus_remote_write_url, args.advanced, args.nccl_metrics)
 
     print("---")
     print("Finished observability installation")
