@@ -67,11 +67,19 @@ spec:
               resources:
                 requests:
                   nvidia.com/gpu: $GPU_PER_NODE
+                  vpc.amazonaws.com/efa: $EFA_PER_NODE
                 limits:
                   nvidia.com/gpu: $GPU_PER_NODE
+                  vpc.amazonaws.com/efa: $EFA_PER_NODE
               env:
                 - name: LOGLEVEL
                   value: INFO
+                - name: FI_PROVIDER
+                  value: efa
+                - name: FI_EFA_USE_DEVICE_RDMA
+                  value: '1'
+                - name: FI_EFA_FORK_SAFE
+                  value: '1'
                 - name: TORCH_DISTRIBUTED_DEBUG
                   value: DETAIL
                 - name: TORCH_NCCL_ENABLE_MONITORING
