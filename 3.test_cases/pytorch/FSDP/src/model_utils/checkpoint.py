@@ -30,11 +30,8 @@ def save_checkpoint(model, optimizer, scheduler, user_content, root_dir, sub_dir
     
     # Get sharded state dicts (DTensor format)
     model_state_dict = get_model_state_dict(model)
-    optimizer_state_dict = get_optimizer_state_dict(
-        model=model,
-        optimizer=optimizer,
-    )
-    
+    optimizer_state_dict = get_optimizer_state_dict(model, optimizer)
+
     state_dict = {
         "model": model_state_dict,
         "optim": optimizer_state_dict,
@@ -102,22 +99,15 @@ def load_checkpoint(model, optimizer, scheduler, checkpoint_dir, model_type, dev
     )
     
     # Load model state dict
-    set_model_state_dict(
-        model=model,
-        model_state_dict=state_dict["model"],
-    )
-    
+    set_model_state_dict(model, state_dict["model"])
+
     if dist.get_rank() == 0:
         logger.info("Loaded model state from disk")
         logger.info("Loading optimizer state from disk")
     
     # Load optimizer state dict
-    set_optimizer_state_dict(
-        model=model,
-        optimizer=optimizer,
-        optim_state_dict=state_dict["optim"],
-    )
-    
+    set_optimizer_state_dict(model, optimizer, state_dict["optim"])
+
     # Load scheduler state
     scheduler.load_state_dict(state_dict["scheduler"])
     
