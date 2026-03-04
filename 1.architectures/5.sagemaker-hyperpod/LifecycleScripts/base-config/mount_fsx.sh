@@ -9,6 +9,9 @@ FSX_DNS_NAME="$1"
 FSX_MOUNTNAME="$2"
 MOUNT_POINT="$3"
 
+# Track whether EFA was fully configured (set to true by configure_efa_lustre on success)
+EFA_CONFIGURED=false
+
 # Function for error handling
 handle_error()
 {
@@ -150,6 +153,7 @@ configure_efa_lustre()
     ansible localhost -m ansible.builtin.file -a "path=/tmp/configure-efa-fsx-lustre-client.zip state=absent"
     ansible localhost -m ansible.builtin.file -a "path=/tmp/configure-efa-fsx-lustre-client/setup.sh state=absent"
 
+    EFA_CONFIGURED=true
     echo "[INFO] EFA configuration for FSx Lustre completed"
 }
 
@@ -214,6 +218,72 @@ mount_fs() {
     return 1
 }
 
+# Verify that EFA transport is actually carrying data to the OSS.
+# Lustre MGS/MDS traffic always goes over ENA/TCP regardless of EFA configuration.
+# Only bulk data I/O to the OSS uses EFA. If EFA is misconfigured (e.g. security groups,
+# subnet issues), Lustre silently falls back to ENA/TCP with no errors — the only way
+# to detect this is to generate OSS traffic and check the EFA interface counters.
+verify_efa_transport()
+{
+    if [[ "$EFA_CONFIGURED" != "true" ]]; then
+        echo "[INFO] EFA was not configured — skipping EFA transport verification"
+        return 0
+    fi
+
+    echo "[INFO] Verifying EFA transport for FSx Lustre..."
+
+    # Check that the EFA LNet network is present
+    if ! lnetctl net show -v --net efa > /dev/null 2>&1; then
+        echo "[ERROR] EFA LNet network not found despite EFA being configured"
+        return 1
+    fi
+
+    # Capture baseline EFA counters before generating I/O
+    local send_before recv_before
+    send_before=$(lnetctl net show -v --net efa | awk '/send_count:/ {print $2}')
+    recv_before=$(lnetctl net show -v --net efa | awk '/recv_count:/ {print $2}')
+
+    echo "[INFO] EFA counters before I/O — send: $send_before, recv: $recv_before"
+
+    # Generate bulk I/O to force traffic through the OSS (not just MGS/MDS metadata).
+    # A 64MB write + read is sufficient to move the counters if EFA is active.
+    local test_file="$MOUNT_POINT/.efa_verify_$(hostname)"
+    dd if=/dev/zero of="$test_file" bs=1M count=64 oflag=direct 2>/dev/null || true
+    sync
+    dd if="$test_file" of=/dev/null bs=1M iflag=direct 2>/dev/null || true
+    rm -f "$test_file"
+
+    # Capture EFA counters after I/O
+    local send_after recv_after
+    send_after=$(lnetctl net show -v --net efa | awk '/send_count:/ {print $2}')
+    recv_after=$(lnetctl net show -v --net efa | awk '/recv_count:/ {print $2}')
+
+    echo "[INFO] EFA counters after I/O — send: $send_after, recv: $recv_after"
+
+    # Verify that both send and recv counters increased — if either is flat,
+    # data is not flowing over EFA and has silently fallen back to ENA/TCP.
+    if [[ "$send_after" -le "$send_before" ]] || [[ "$recv_after" -le "$recv_before" ]]; then
+        echo "[ERROR] ============================================="
+        echo "[ERROR] EFA TRANSPORT VERIFICATION FAILED"
+        echo "[ERROR] ============================================="
+        echo "[ERROR] EFA was configured but data is NOT flowing over EFA interfaces."
+        echo "[ERROR] Traffic is likely falling back to ENA/TCP."
+        echo "[ERROR] Send count: $send_before -> $send_after"
+        echo "[ERROR] Recv count: $recv_before -> $recv_after"
+        echo "[ERROR] Troubleshooting:"
+        echo "[ERROR]   - Verify security groups allow EFA traffic between nodes and FSx"
+        echo "[ERROR]   - Confirm FSx filesystem and instance are in the same AZ"
+        echo "[ERROR]   - Check that FSx was created with EFA enabled"
+        echo "[ERROR] ============================================="
+        return 1
+    fi
+
+    echo "[SUCCESS] EFA transport verified — data is flowing over EFA interfaces"
+    echo "[INFO] Send count: $send_before -> $send_after (delta: $((send_after - send_before)))"
+    echo "[INFO] Recv count: $recv_before -> $recv_after (delta: $((recv_after - recv_before)))"
+    return 0
+}
+
 
 
 restart_daemon()
@@ -234,6 +304,7 @@ main()
     configure_efa_lustre
     load_lnet_modules
     mount_fs || exit 1
+    verify_efa_transport || exit 1
     restart_daemon
     echo "FSx Lustre mounted successfully to $MOUNT_POINT"
 }
