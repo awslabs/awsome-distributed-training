@@ -25,11 +25,11 @@ sys.path.insert(0, os.path.join(SKILLS_BASE, 'hyperpod-manager', 'src'))
 # Import sub-skills
 try:
     from check_cluster import check_cluster_health, check_gpu_availability, check_efa_availability
-    from ray_manager import check_kuberay_installed, install_kuberay, create_raycluster, generate_raycluster_yaml
+    from ray_manager import check_kuberay_installed, install_kuberay, create_raycluster, generate_raycluster_yaml, delete_raycluster
     from pytorchjob_manager import check_pytorchjob_crd, generate_pytorchjob_yaml, deploy_pytorchjob
     from checkpoint_manager import create_pvc, find_latest_checkpoint, find_latest_checkpoint_on_pod
     from monitor import auto_restart, get_training_health, print_training_health
-    from hyperpod_manager import is_hyperpod_cluster, get_hyperpod_nodes
+    from hyperpod_manager import is_hyperpod_cluster, get_hyperpod_nodes, describe_cluster as describe_hyperpod_cluster, scale_instance_group
 except ImportError as e:
     print(f"Error: Missing sub-skill. {e}")
     print("Please ensure all sub-skills are installed:")
@@ -85,6 +85,10 @@ class TrainingJobDeployer:
     def run(self) -> int:
         """Execute the deployment workflow."""
         try:
+            # If cleanup mode, run cleanup only
+            if getattr(self.args, 'cleanup', False):
+                return self._run_cleanup()
+            
             self.logger.log("=" * 70)
             self.logger.log("Training Job Deployer - Starting Deployment")
             self.logger.log("=" * 70)
@@ -405,6 +409,120 @@ python3 -m verl.trainer.main_ppo algorithm.adv_estimator=grpo data.train_files="
             f"--batch_size={self.args.batch_size}"
         )
 
+    # ------------------------------------------------------------------
+    # Cleanup / Teardown
+    # ------------------------------------------------------------------
+
+    def _run_cleanup(self) -> int:
+        """Execute cleanup workflow: delete workloads, optionally scale down instances."""
+        self.logger.log("=" * 70)
+        self.logger.log("Training Job Deployer - Cleanup Mode")
+        self.logger.log("=" * 70)
+
+        total_steps = 2 + (1 if self.args.scale_down else 0)
+        step = 0
+
+        # Step 1: Delete RayCluster (if it exists)
+        step += 1
+        self.logger.step(step, total_steps, "Checking for RayCluster to delete...")
+        ray_name = self.args.job_name
+        try:
+            result = subprocess.run(
+                ["kubectl", "get", "raycluster", ray_name, "-o", "name"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                self.logger.log(f"Deleting RayCluster '{ray_name}'...")
+                delete_raycluster(ray_name, namespace=self.args.namespace)
+                self.logger.log(f"RayCluster '{ray_name}' deleted", "SUCCESS")
+            else:
+                self.logger.log(f"No RayCluster '{ray_name}' found, skipping")
+        except Exception as e:
+            self.logger.log(f"Error deleting RayCluster: {e}", "WARN")
+
+        # Step 2: Delete PyTorchJob (if it exists)
+        step += 1
+        self.logger.step(step, total_steps, "Checking for PyTorchJob to delete...")
+        try:
+            result = subprocess.run(
+                ["kubectl", "get", "pytorchjob", ray_name, "-o", "name"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                self.logger.log(f"Deleting PyTorchJob '{ray_name}'...")
+                subprocess.run(
+                    ["kubectl", "delete", "pytorchjob", ray_name,
+                     "-n", self.args.namespace, "--timeout=60s"],
+                    capture_output=True, text=True, timeout=90,
+                )
+                self.logger.log(f"PyTorchJob '{ray_name}' deleted", "SUCCESS")
+            else:
+                self.logger.log(f"No PyTorchJob '{ray_name}' found, skipping")
+        except Exception as e:
+            self.logger.log(f"Error deleting PyTorchJob: {e}", "WARN")
+
+        # Step 3 (optional): Scale down HyperPod instance group
+        if self.args.scale_down:
+            step += 1
+            self.logger.step(step, total_steps, "Scaling down HyperPod instance group...")
+
+            hp_cluster = self.args.hyperpod_cluster
+            hp_group = self.args.hyperpod_group
+
+            if not hp_cluster or not hp_group:
+                # Try to auto-detect from current nodes
+                self.logger.log("Auto-detecting HyperPod cluster and instance group...")
+                try:
+                    nodes = get_hyperpod_nodes()
+                    if nodes:
+                        hp_group = hp_group or nodes[0].get("node_group")
+                    if not hp_cluster:
+                        # Try to find the cluster from the EKS cluster name
+                        clusters = []
+                        try:
+                            from hyperpod_manager import list_clusters
+                            clusters = list_clusters(region=self.args.region)
+                        except Exception:
+                            pass
+                        if len(clusters) == 1:
+                            hp_cluster = clusters[0]["name"]
+                        elif len(clusters) > 1:
+                            self.logger.log(
+                                f"Multiple HyperPod clusters found: {[c['name'] for c in clusters]}. "
+                                f"Please specify --hyperpod_cluster.", "ERROR"
+                            )
+                            return 1
+                except Exception as e:
+                    self.logger.log(f"Auto-detection failed: {e}", "ERROR")
+
+            if not hp_cluster or not hp_group:
+                self.logger.log(
+                    "Cannot scale down: --hyperpod_cluster and --hyperpod_group are required "
+                    "(or auto-detection must succeed).", "ERROR"
+                )
+                return 1
+
+            target = self.args.scale_down_target
+            try:
+                result = scale_instance_group(
+                    cluster_name=hp_cluster,
+                    group_name=hp_group,
+                    target_count=target,
+                    region=self.args.region,
+                )
+                self.logger.log(
+                    f"Instance group '{hp_group}' scaling: "
+                    f"{result['old_count']} -> {target}", "SUCCESS"
+                )
+            except Exception as e:
+                self.logger.log(f"Failed to scale instance group: {e}", "ERROR")
+                return 1
+
+        self.logger.log("=" * 70)
+        self.logger.log("Cleanup completed successfully!", "SUCCESS")
+        self.logger.log("=" * 70)
+        return 0
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -420,6 +538,10 @@ Examples:
   
   # Deploy with PyTorchJob
   python deploy.py --cluster_name my-cluster --image_uri my-image:latest --use_pytorchjob
+
+  # Cleanup: delete workloads and scale down instances
+  python deploy.py --cluster_name my-cluster --image_uri dummy --job_name my-job --cleanup --scale_down \\
+    --hyperpod_cluster my-hp-cluster --hyperpod_group my-ig-8x
         """
     )
     
@@ -459,6 +581,13 @@ Examples:
     parser.add_argument('--skip_validation', action='store_true', help='Skip cluster validation')
     parser.add_argument('--skip_resume', action='store_true', help='Skip checkpoint resume')
     parser.add_argument('--verbose', action='store_true', default=True, help='Verbose output')
+    
+    # Cleanup / Teardown
+    parser.add_argument('--cleanup', action='store_true', help='Run cleanup mode: delete workloads and optionally scale down instances')
+    parser.add_argument('--scale_down', action='store_true', help='Scale down HyperPod instance group during cleanup')
+    parser.add_argument('--scale_down_target', type=int, default=0, help='Target instance count when scaling down (default: 0)')
+    parser.add_argument('--hyperpod_cluster', default=None, help='HyperPod cluster name (for scale down). Auto-detected if only one cluster exists.')
+    parser.add_argument('--hyperpod_group', default=None, help='HyperPod instance group name (for scale down). Auto-detected from node labels if possible.')
     
     args = parser.parse_args()
     

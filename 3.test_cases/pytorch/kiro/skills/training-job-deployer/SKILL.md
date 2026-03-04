@@ -25,7 +25,9 @@ I am an **orchestrator skill** that coordinates multiple specialized skills to d
 3. **pytorchjob-manager** - Manages Kubeflow PyTorchJobs
 4. **checkpoint-manager** - Configures persistent storage
 5. **training-monitor** - Monitors and auto-restarts failed jobs
-6. **hyperpod-manager** - Leverages HyperPod-specific features
+6. **hyperpod-manager** - Leverages HyperPod-specific features (including instance group scaling)
+
+I also handle **post-training cleanup**: deleting RayClusters/PyTorchJobs and optionally scaling down HyperPod instance groups to save costs.
 
 ## When to use me
 
@@ -33,6 +35,7 @@ Use me when you want to:
 - **Deploy training with one command** - I handle all the complexity
 - **Get started quickly** - Don't worry about which sub-skills to call
 - **Ensure proper setup** - I validate and configure everything in the right order
+- **Clean up after training** - Delete workloads and scale down instances
 
 **Use individual sub-skills directly when:**
 - You need fine-grained control
@@ -43,7 +46,7 @@ Use me when you want to:
 
 ### Deploy with Ray (Recommended for VERL)
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
   --image_uri 123456789.dkr.ecr.us-west-2.amazonaws.com/verl:latest \
   --num_nodes 4 \
@@ -53,7 +56,7 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
 
 ### Deploy with PyTorchJob (Native Kubeflow)
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
   --image_uri 123456789.dkr.ecr.us-west-2.amazonaws.com/fsdp:latest \
   --num_nodes 4 \
@@ -61,20 +64,30 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
   --auto_monitor
 ```
 
-### Deploy and Auto-Restart on Failure
+### Cleanup: Delete Workloads Only
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
-  --image_uri my-image:latest \
-  --num_nodes 4 \
-  --use_ray \
-  --auto_monitor \
-  --max_retries 10
+  --image_uri dummy \
+  --job_name verl-grpo-training \
+  --cleanup
+```
+
+### Cleanup: Delete Workloads AND Scale Down Instances
+```bash
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
+  --cluster_name my-cluster \
+  --image_uri dummy \
+  --job_name verl-grpo-training \
+  --cleanup \
+  --scale_down \
+  --hyperpod_cluster test-cluster-eks-try2 \
+  --hyperpod_group test-cluster-eks-try2-ig-8x
 ```
 
 ## How It Works
 
-When you run me, I execute this workflow:
+When you run me in **deploy mode**, I execute this workflow:
 
 ```
 Step 1: k8s-cluster-manager
@@ -92,6 +105,19 @@ Step 4: Deploy training job
         
 Step 5: training-monitor (if --auto_monitor)
         ↓ Start monitoring and auto-restart loop
+```
+
+When you run me in **cleanup mode** (`--cleanup`), I execute:
+
+```
+Step 1: Delete RayCluster (if exists)
+        ↓ ray-cluster-manager.delete_raycluster()
+        
+Step 2: Delete PyTorchJob (if exists)
+        ↓ kubectl delete pytorchjob
+        
+Step 3: Scale down instances (if --scale_down)
+        ↓ hyperpod-manager.scale_instance_group() → 0
 ```
 
 ## Parameters
@@ -126,11 +152,18 @@ Step 5: training-monitor (if --auto_monitor)
 - `--batch_size`: Training batch size (default: 8)
 - `--save_freq`: Checkpoint save frequency (default: 10)
 
+### Cleanup / Teardown
+- `--cleanup`: Run cleanup mode instead of deployment
+- `--scale_down`: Scale down HyperPod instance group during cleanup
+- `--scale_down_target`: Target instance count (default: 0)
+- `--hyperpod_cluster`: HyperPod cluster name (auto-detected if only one exists)
+- `--hyperpod_group`: HyperPod instance group name (auto-detected from node labels)
+
 ## Examples
 
 ### Basic Ray Deployment
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name sagemaker-test-cluster-eks-try2-3a6aa148-eks \
   --image_uri 975049888767.dkr.ecr.us-west-2.amazonaws.com/verl-rlvr:latest \
   --num_nodes 4 \
@@ -140,7 +173,7 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
 
 ### VERL Training with Auto-Restart
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
   --image_uri my-verl-image:latest \
   --job_name verl-grpo-training \
@@ -153,7 +186,7 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
 
 ### PyTorchJob FSDP Training
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
   --image_uri my-fsdp-image:latest \
   --job_name llama-fsdp \
@@ -165,7 +198,7 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
 
 ### Resume from Checkpoint
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
   --image_uri my-image:latest \
   --use_ray \
@@ -179,12 +212,12 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
 
 | Skill | Responsibility | When Called |
 |-------|---------------|-------------|
-| k8s-cluster-manager | Cluster validation | Step 1 - Always |
-| checkpoint-manager | Storage setup | Step 2 - Always |
-| ray-cluster-manager | Ray setup | Step 3 - If --use_ray |
+| k8s-cluster-manager | Cluster validation | Step 1 - Always (deploy) |
+| checkpoint-manager | Storage setup | Step 2 - Always (deploy) |
+| ray-cluster-manager | Ray setup & teardown | Step 3 (deploy) / Step 1 (cleanup) |
 | pytorchjob-manager | PyTorchJob setup | Step 3 - If --use_pytorchjob |
 | training-monitor | Job monitoring | Step 5 - If --auto_monitor |
-| hyperpod-manager | HyperPod features | Optional - Auto-detected |
+| hyperpod-manager | HyperPod features & scaling | Auto-detected (deploy) / Step 3 (cleanup --scale_down) |
 
 ### Why This Architecture?
 
@@ -215,26 +248,26 @@ I print clear step indicators:
 Run the sub-skill directly:
 ```bash
 # Just check cluster
-python3 ~/.opencode/skills/k8s-cluster-manager/src/check_cluster.py my-cluster
+python3 ~/.config/opencode/skills/k8s-cluster-manager/src/check_cluster.py my-cluster
 
 # Just setup Ray
-python3 ~/.opencode/skills/ray-cluster-manager/src/ray_manager.py create
+python3 ~/.config/opencode/skills/ray-cluster-manager/src/ray_manager.py create
 
 # Just monitor
-python3 ~/.opencode/skills/training-monitor/src/monitor.py --job_id xxx
+python3 ~/.config/opencode/skills/training-monitor/src/monitor.py --job_id xxx
 ```
 
 ### "Deployment failed, how do I recover?"
 Check which step failed, then:
 ```bash
 # If cluster check failed
-python3 ~/.opencode/skills/k8s-cluster-manager/src/check_cluster.py my-cluster --full
+python3 ~/.config/opencode/skills/k8s-cluster-manager/src/check_cluster.py my-cluster --full
 
 # If Ray setup failed
-python3 ~/.opencode/skills/ray-cluster-manager/src/ray_manager.py status my-job
+python3 ~/.config/opencode/skills/ray-cluster-manager/src/ray_manager.py status my-job
 
 # If monitoring needed
-python3 ~/.opencode/skills/training-monitor/src/monitor.py --head_pod xxx
+python3 ~/.config/opencode/skills/training-monitor/src/monitor.py --head_pod xxx
 ```
 
 ## Advanced Usage
@@ -255,7 +288,7 @@ result = deploy_training_job({
 
 ### Skip Validation (Fast Deploy)
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
   --image_uri my-image:latest \
   --skip_validation \
@@ -264,7 +297,7 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
 
 ### Custom Configuration
 ```bash
-python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
+python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --cluster_name my-cluster \
   --image_uri my-image:latest \
   --use_ray \
@@ -282,12 +315,12 @@ python3 ~/.opencode/skills/training-job-deployer/src/deploy.py \
 I require these skills to be installed:
 ```bash
 # All sub-skills should be in:
-~/.opencode/skills/k8s-cluster-manager/
-~/.opencode/skills/ray-cluster-manager/
-~/.opencode/skills/pytorchjob-manager/
-~/.opencode/skills/checkpoint-manager/
-~/.opencode/skills/training-monitor/
-~/.opencode/skills/hyperpod-manager/
+~/.config/opencode/skills/k8s-cluster-manager/
+~/.config/opencode/skills/ray-cluster-manager/
+~/.config/opencode/skills/pytorchjob-manager/
+~/.config/opencode/skills/checkpoint-manager/
+~/.config/opencode/skills/training-monitor/
+~/.config/opencode/skills/hyperpod-manager/
 ```
 
 Each sub-skill is standalone and can be used independently.

@@ -2,6 +2,7 @@
 """
 Claude Code Command: Deploy Training Job
 Deploy distributed training jobs to EKS with support for PyTorchJob and Ray (KubeRay).
+Supports cleanup mode for deleting workloads and scaling down HyperPod instance groups.
 
 This command uses the training-job-deployer skill which orchestrates multiple sub-skills:
 - k8s-cluster-manager: Validates cluster health and resources
@@ -9,6 +10,7 @@ This command uses the training-job-deployer skill which orchestrates multiple su
 - pytorchjob-manager: Manages Kubeflow PyTorchJobs
 - checkpoint-manager: Configures persistent storage
 - training-monitor: Monitors and auto-restarts failed jobs
+- hyperpod-manager: Leverages HyperPod features (including instance group scaling)
 
 Examples:
     # Deploy with PyTorchJob (default)
@@ -26,15 +28,16 @@ Examples:
         max_retries=10
     )
     
-    # Deploy with custom configuration
-    deploy_training_job(
+    # Cleanup: delete workloads only
+    cleanup_training_job(cluster_name="my-cluster", job_name="verl-grpo-training")
+    
+    # Cleanup: delete workloads AND scale down HyperPod instances
+    cleanup_training_job(
         cluster_name="my-cluster",
-        image_uri="my-image:latest",
-        job_name="llama-fsdp",
-        num_nodes=8,
-        use_pytorchjob=True,
-        model_path="meta-llama/Llama-2-7b-hf",
-        batch_size=16
+        job_name="verl-grpo-training",
+        scale_down=True,
+        hyperpod_cluster="my-hp-cluster",
+        hyperpod_group="my-hp-group"
     )
 """
 
@@ -321,6 +324,99 @@ def monitor_training_job(
         return f"Error: {str(e)}"
 
 
+def cleanup_training_job(
+    cluster_name: str,
+    job_name: str = "training-job",
+    scale_down: bool = False,
+    scale_down_target: int = 0,
+    hyperpod_cluster: Optional[str] = None,
+    hyperpod_group: Optional[str] = None,
+    namespace: str = "default",
+    region: str = "us-west-2"
+) -> str:
+    """
+    Clean up training workloads and optionally scale down HyperPod instance groups.
+    
+    Deletes RayClusters and PyTorchJobs by name, and optionally scales down
+    HyperPod instance groups to save costs after training is complete.
+    
+    Args:
+        cluster_name: EKS cluster name (required)
+        job_name: Job name to delete (default: "training-job")
+        scale_down: Also scale down HyperPod instance group (default: False)
+        scale_down_target: Target instance count for scale down (default: 0)
+        hyperpod_cluster: HyperPod cluster name (auto-detected if only one exists)
+        hyperpod_group: HyperPod instance group name (auto-detected from node labels)
+        namespace: Kubernetes namespace (default: "default")
+        region: AWS region (default: "us-west-2")
+    
+    Returns:
+        str: Cleanup status
+    
+    Examples:
+        # Delete workloads only
+        cleanup_training_job(cluster_name="my-cluster", job_name="verl-grpo")
+        
+        # Delete workloads and scale down instances
+        cleanup_training_job(
+            cluster_name="my-cluster",
+            job_name="verl-grpo",
+            scale_down=True
+        )
+        
+        # Scale down specific HyperPod instance group
+        cleanup_training_job(
+            cluster_name="my-cluster",
+            job_name="verl-grpo",
+            scale_down=True,
+            hyperpod_cluster="my-hp-cluster",
+            hyperpod_group="my-hp-ig-8x"
+        )
+    """
+    
+    skill_path = os.path.join(
+        os.path.dirname(__file__), '..', 'opencode', 'skills',
+        'training-job-deployer', 'src', 'deploy.py'
+    )
+    
+    cmd = [
+        'python3',
+        skill_path,
+        '--cluster_name', cluster_name,
+        '--image_uri', 'cleanup-placeholder',
+        '--job_name', job_name,
+        '--namespace', namespace,
+        '--region', region,
+        '--cleanup'
+    ]
+    
+    if scale_down:
+        cmd.append('--scale_down')
+        cmd.extend(['--scale_down_target', str(scale_down_target)])
+    
+    if hyperpod_cluster:
+        cmd.extend(['--hyperpod_cluster', hyperpod_cluster])
+    
+    if hyperpod_group:
+        cmd.extend(['--hyperpod_group', hyperpod_group])
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        
+        if result.returncode == 0:
+            msg = f"Cleanup successful for '{job_name}'"
+            if scale_down:
+                msg += f" (scaled down to {scale_down_target} instances)"
+            return f"{msg}\n\n{result.stdout}"
+        else:
+            return f"Cleanup failed (exit code: {result.returncode})\n\n{result.stderr}\n\n{result.stdout}"
+    
+    except subprocess.TimeoutExpired:
+        return "Cleanup timeout after 120 seconds"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 if __name__ == '__main__':
     import argparse
     
@@ -373,6 +469,29 @@ Examples:
     parser.add_argument('--namespace', default='default', help='Namespace')
     parser.add_argument('--region', default='us-west-2', help='AWS region')
     
+    # Cleanup / teardown
+    parser.add_argument('--cleanup', action='store_true', help='Run cleanup mode (delete workloads)')
+    parser.add_argument('--scale_down', action='store_true', help='Scale down HyperPod instances during cleanup')
+    parser.add_argument('--scale_down_target', type=int, default=0, help='Target instance count for scale down')
+    parser.add_argument('--hyperpod_cluster', default=None, help='HyperPod cluster name')
+    parser.add_argument('--hyperpod_group', default=None, help='HyperPod instance group name')
+    
     args = parser.parse_args()
     
-    print(deploy_training_job(**vars(args)))
+    if args.cleanup:
+        print(cleanup_training_job(
+            cluster_name=args.cluster_name,
+            job_name=args.job_name,
+            scale_down=args.scale_down,
+            scale_down_target=args.scale_down_target,
+            hyperpod_cluster=args.hyperpod_cluster,
+            hyperpod_group=args.hyperpod_group,
+            namespace=args.namespace,
+            region=args.region
+        ))
+    else:
+        # Remove cleanup-specific args before passing to deploy
+        deploy_args = {k: v for k, v in vars(args).items() 
+                       if k not in ('cleanup', 'scale_down', 'scale_down_target', 
+                                    'hyperpod_cluster', 'hyperpod_group')}
+        print(deploy_training_job(**deploy_args))
