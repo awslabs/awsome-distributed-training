@@ -12,20 +12,27 @@ CONTROLLER_IP_VALUES=($2)
 main() {
   echo "[INFO] START: Starting Slurm daemons"
 
-  # Ensure prolog/epilog scripts are executable on every node type.
-  # slurmctld (controller) validates executability at startup; slurmd
-  # (compute) must also be able to exec them when a job runs.
   # The scripts are downloaded from the customer S3 bucket by HyperPod into
   # /tmp/<bucket-name>/, which is the working directory this script is
   # launched from.  Derive the path dynamically so it works regardless of
   # the bucket name.
   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  for script in "$SCRIPT_DIR/prolog.sh" "$SCRIPT_DIR/epilog.sh"; do
-      if [ -f "$script" ]; then
-          chmod +x "$script"
-          echo "[INFO] Made $script executable"
+
+  # /tmp may be cleared on reboot, so copy prolog/epilog to a persistent
+  # location and make them executable there.
+  # slurmctld (controller) validates executability at startup; slurmd
+  # (compute) must also be able to exec them when a job runs.
+  SLURM_SCRIPTS_DIR="/opt/slurm/etc/scripts"
+  mkdir -p "$SLURM_SCRIPTS_DIR"
+  for script in prolog.sh epilog.sh; do
+      src="$SCRIPT_DIR/$script"
+      dst="$SLURM_SCRIPTS_DIR/$script"
+      if [ -f "$src" ]; then
+          cp "$src" "$dst"
+          chmod +x "$dst"
+          echo "[INFO] Copied and made executable: $dst"
       else
-          echo "[WARN] $script not found, skipping chmod"
+          echo "[WARN] $src not found, skipping"
       fi
   done
 
@@ -33,11 +40,12 @@ main() {
     echo "[INFO] This is a Controller node. Start slurm controller daemon..."
 
     # Inject Prolog/Epilog paths into slurm.conf before slurmctld reads it.
+    # Point at the persistent copies under /opt/slurm/etc/scripts/ rather than /tmp.
     # Remove any pre-existing lines to avoid duplicates on re-runs, then append.
     sed -i '/^Prolog=/d;/^Epilog=/d' /opt/slurm/etc/slurm.conf
     printf '\n' >> /opt/slurm/etc/slurm.conf
-    echo "Prolog=${SCRIPT_DIR}/prolog.sh"  >> /opt/slurm/etc/slurm.conf
-    echo "Epilog=${SCRIPT_DIR}/epilog.sh"  >> /opt/slurm/etc/slurm.conf
+    echo "Prolog=${SLURM_SCRIPTS_DIR}/prolog.sh"  >> /opt/slurm/etc/slurm.conf
+    echo "Epilog=${SLURM_SCRIPTS_DIR}/epilog.sh"  >> /opt/slurm/etc/slurm.conf
     echo "[INFO] Added Prolog and Epilog to /opt/slurm/etc/slurm.conf"
 
     systemctl enable --now slurmctld
