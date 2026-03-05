@@ -427,7 +427,7 @@ kubectl create configmap nsight-scripts \
 
 ## 8.3 Configure and run a profiled training job
 
-A reference PyTorchJob manifest is provided at `3.test_cases/pytorch/FSDP/kubernetes/llama3_2_1b-fsdp-nsight.yaml`. The key additions compared to a standard training job are:
+A reference PyTorchJob manifest is provided at `EKS/llama3_2_1b-fsdp-nsight.yaml`. The key additions compared to a standard training job are:
 
 1. **Volumes**: Mount nsight from host and the ConfigMap script
 
