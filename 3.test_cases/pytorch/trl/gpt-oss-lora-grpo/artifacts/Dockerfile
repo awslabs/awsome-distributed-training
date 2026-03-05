@@ -10,7 +10,7 @@ FROM trl-base:latest
 # GPT-OSS specific: HyperPod elastic agent for EKS distributed training
 # Fix torchvision compatibility with PyTorch 2.6.0
 # Remove vLLM (installed by trl[vllm] in base) - incompatible ABI and not needed for this recipe
-RUN pip install hyperpod-elastic-agent torchvision==0.21.0 langdetect trackio && pip uninstall -y vllm
+RUN pip install hyperpod-elastic-agent torchvision==0.21.0 langdetect trackio deep-translator && pip uninstall -y vllm
 # Copy source code
 WORKDIR /app
 COPY src/ /app/

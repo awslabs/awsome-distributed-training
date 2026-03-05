@@ -1,7 +1,6 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-#!/usr/bin/env python3
 """
 Interactive Single-Node Multi-GPU Inference for GPT-OSS 20B.
 Uses device_map="auto" to split model across 4 GPUs on g6e.12xlarge (4 x L40S 48GB).

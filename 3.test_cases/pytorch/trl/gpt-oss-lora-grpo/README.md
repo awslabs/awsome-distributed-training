@@ -22,7 +22,7 @@ This guide explains how to train the GPT-OSS 20B model with LoRA, then improve i
 
 ### 0.1. EKS Cluster
 
-Before running this training, you'll need to create an Amazon EKS or a SageMaker HyperPod EKS cluster. Instructions can be found in [1.architectures](../../../../1.architectures), the [aws-do-eks](https://bit.ly/do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
+Before running this training, you'll need to create an Amazon EKS or a SageMaker HyperPod EKS cluster. Instructions can be found in [1.architectures](../../../../1.architectures), the [aws-do-eks](https://github.com/aws-samples/aws-do-eks) project, or the [eks-blueprints](https://github.com/aws-ia/terraform-aws-eks-blueprints) project.
 
 ### 0.2. Connect to your EKS Cluster
 

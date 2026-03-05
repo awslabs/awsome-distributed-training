@@ -44,5 +44,6 @@ spec:
       persistentVolumeClaim:
         claimName: fsx-claim
     - name: shmem
-      hostPath:
-        path: /dev/shm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Gi

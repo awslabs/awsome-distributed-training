@@ -1,7 +1,6 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-#!/usr/bin/env python3
 """
 Interactive GRPO Inference - Using same prompt format as evaluate_grpo.py
 

@@ -48,8 +48,9 @@ spec:
           mountPath: /fsx
   volumes:
     - name: shmem
-      hostPath:
-        path: /dev/shm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Gi
     - name: fsx-storage
       persistentVolumeClaim:
         claimName: fsx-claim

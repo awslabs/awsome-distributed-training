@@ -1,7 +1,6 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-#!/usr/bin/env python3
 """
 Convert FSDP distributed checkpoint to standard PEFT format.
 Handles the .distcp sharded format from Accelerate FSDP training.
@@ -17,59 +16,6 @@ import torch
 from torch.distributed.checkpoint import FileSystemReader
 from torch.distributed.checkpoint.metadata import Metadata
 from tqdm import tqdm
-import time
-import zipfile
-import pickle
-import io
-
-
-def load_distcp_shards(fsdp_path: str) -> dict:
-    """Load all .distcp shard files and merge them."""
-    
-    # Get metadata to understand tensor structure
-    reader = FileSystemReader(fsdp_path)
-    metadata = reader.read_metadata()
-    
-    # Get all tensor keys and their metadata
-    tensor_info = {}
-    for key, tensor_meta in metadata.state_dict_metadata.items():
-        tensor_info[key] = {
-            'size': tensor_meta.size,
-            'chunks': []
-        }
-    
-    print(f"Found {len(tensor_info)} tensors in metadata")
-    
-    # Get shard files
-    shard_files = sorted([f for f in os.listdir(fsdp_path) if f.endswith('.distcp')])
-    print(f"Found {len(shard_files)} shard files")
-    
-    # Each shard file is a zip containing tensors
-    all_data = {}
-    
-    for shard_file in tqdm(shard_files, desc="Loading shards"):
-        shard_path = os.path.join(fsdp_path, shard_file)
-        
-        with zipfile.ZipFile(shard_path, 'r') as zf:
-            # Get the pickle file with metadata
-            with zf.open('archive/data.pkl') as f:
-                pkl_data = pickle.load(f)
-            
-            # Load tensor data files
-            data_files = [n for n in zf.namelist() if n.startswith('archive/data/') and not n.endswith('/')]
-            
-            for data_file in data_files:
-                tensor_idx = int(data_file.split('/')[-1])
-                with zf.open(data_file) as f:
-                    tensor_bytes = f.read()
-                    # Parse tensor from bytes
-                    tensor = torch.frombuffer(bytearray(tensor_bytes), dtype=torch.bfloat16)
-                    
-                    if shard_file not in all_data:
-                        all_data[shard_file] = {}
-                    all_data[shard_file][tensor_idx] = tensor
-    
-    return all_data, tensor_info
 
 
 def convert_checkpoint_v2(checkpoint_path: str, output_path: str = None):
@@ -95,7 +41,6 @@ def convert_checkpoint_v2(checkpoint_path: str, output_path: str = None):
     # Use Accelerate's load_fsdp_model approach
     print("\n[1/3] Loading FSDP checkpoint using torch.distributed.checkpoint...")
     
-    from torch.distributed.checkpoint import FileSystemReader
     from torch.distributed.checkpoint.state_dict_loader import load
     
     # Read metadata first
