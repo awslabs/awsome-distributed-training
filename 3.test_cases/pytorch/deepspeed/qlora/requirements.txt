@@ -1,6 +1,6 @@
 # Core ML Libraries
 # NOTE: torch is installed separately with the correct CUDA index URL.
-# - Docker (see Dockerfile):       torch>=2.7.0,<2.10.0 with cu128
+# - Docker (see Dockerfile):       torch>=2.7.0,<2.10.0 with cu129 (pytorch:25.04-py3 base)
 # - Slurm venv (see slurm/README): torch==2.6.0 with cu126
 # See docs/TROUBLESHOOTING.md if you encounter CUBLAS errors (typically caused
 # by environment-level CUDA library conflicts, not a library bug).
