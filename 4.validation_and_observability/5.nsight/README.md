@@ -383,3 +383,222 @@ kubectl delete cm -n example-ns nvidia-devtools-sidecar-injector-custom
 kubectl delete cm nvidia-devtools-sidecar-injector
 kubectl delete cm nvidia-devtools-sidecar-injector-custom
 ```
+
+# 8. Nsight on EKS with Host-Mount Approach (HyperPod / DLAMI)
+
+The sidecar injector approach in Section 7 requires pulling an Nsight Docker image and installing a Helm chart. An alternative, simpler approach is available when nsys is pre-installed on the cluster nodes (as it is on **SageMaker HyperPod EKS** nodes and **DLAMI-based** EKS nodes). This approach mounts the host's nsight-systems directory directly into the training pods.
+
+**Quick start:**
+1. Verify nsys is on nodes: `ls /opt/nvidia/nsight-systems/`
+2. Create ConfigMap: `kubectl create configmap nsight-scripts --from-file=nsys-profile.sh=EKS/nsys-profile.sh`
+3. Apply the profiled job: `kubectl apply -f EKS/llama3_2_1b-fsdp-nsight.yaml`
+4. Copy reports and run analysis: `python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/`
+
+**Prerequisites:**
+- An EKS cluster with GPU nodes where nsys is pre-installed (HyperPod EKS, or DLAMI-based nodes)
+- Kubeflow Training Operator installed (for PyTorchJob CRD)
+- nsys >= 2024.5 for `--pytorch=autograd-shapes-nvtx` support (HyperPod ships 2025.6.1)
+
+**Advantages over the sidecar approach:**
+- No Helm chart, no webhook, no sidecar image to manage
+- Zero overhead for non-profiled ranks (selective profiling)
+- Auto-detects nsys version on the host
+- Modern nsys features: PyTorch NVTX annotations, Python call stack sampling, CUDA memory tracking
+- Generates stats and SQLite export automatically
+
+## 8.1 Verify nsys is available on your nodes
+
+On HyperPod EKS nodes, nsys is pre-installed:
+
+```bash
+# Check from a pod on the node:
+ls /opt/nvidia/nsight-systems/
+# Should show a version directory like 2025.6.1/
+```
+
+## 8.2 Deploy the profiling wrapper script
+
+The `EKS/nsys-profile.sh` script wraps your training command with `nsys profile`. Deploy it as a ConfigMap:
+
+```bash
+kubectl create configmap nsight-scripts \
+  --from-file=nsys-profile.sh=EKS/nsys-profile.sh
+```
+
+## 8.3 Configure and run a profiled training job
+
+A reference PyTorchJob manifest is provided at `EKS/llama3_2_1b-fsdp-nsight.yaml`. The key additions compared to a standard training job are:
+
+1. **Volumes**: Mount nsight from host and the ConfigMap script
+
+```yaml
+volumes:
+  - name: nsight
+    hostPath:
+      path: /opt/nvidia/nsight-systems
+      type: Directory
+  - name: scripts
+    configMap:
+      name: nsight-scripts
+      defaultMode: 0755
+```
+
+2. **Environment variables** to configure profiling:
+
+```yaml
+env:
+  - name: NSYS_DELAY
+    value: "30"            # Skip startup warmup
+  - name: NSYS_DURATION
+    value: "120"           # Capture 120s of steady-state training
+  - name: NSYS_RANKS_TO_PROFILE
+    value: "0"             # Only profile rank 0 (set "all" for small scale)
+  - name: NSYS_PYTORCH_MODE
+    value: "autograd-shapes-nvtx"  # Auto-annotate PyTorch ops
+  - name: NSYS_PYTHON_SAMPLE
+    value: "true"          # Sample Python call stacks at 1kHz
+  - name: NSYS_GPU_METRICS
+    value: "none"          # "all" for A100/H100/H200, "none" for A10G (g5)
+  - name: NSYS_CUDA_MEMORY
+    value: "true"          # Track CUDA memory allocations
+```
+
+3. **Command**: Use the wrapper script instead of calling torchrun directly
+
+```yaml
+command:
+  - /bin/bash
+  - /scripts/nsys-profile.sh
+  - --
+  - /usr/local/bin/torchrun
+  - --nproc_per_node=8
+  - --nnodes=2
+  - /fsdp/train.py
+  - ...training args...
+```
+
+4. **Volume mounts**: Include nsight and scripts
+
+```yaml
+volumeMounts:
+  - name: nsight
+    mountPath: /nsight
+    readOnly: true
+  - name: scripts
+    mountPath: /scripts
+```
+
+Run the job:
+
+```bash
+# Edit the manifest to set your image, node count, and GPU count, then:
+kubectl apply -f EKS/llama3_2_1b-fsdp-nsight.yaml
+
+# Or use envsubst to fill in variables:
+export IMAGE_URI=<your-ecr-image> NUM_NODES=2 GPU_PER_NODE=1
+envsubst < EKS/llama3_2_1b-fsdp-nsight.yaml | kubectl apply -f -
+```
+
+The profiling wrapper will:
+- Auto-detect the nsys binary from the mounted volume
+- Skip profiling for ranks not in `NSYS_RANKS_TO_PROFILE` (zero overhead)
+- Collect with `--delay` and `--duration` to capture steady-state training
+- Use `--kill=none` so training continues after the profiling window ends
+- Auto-generate `.nsys-rep`, `.sqlite`, and summary stats
+
+## 8.4 Copy reports from completed pods
+
+If the pods are still running:
+
+```bash
+kubectl cp <pod-name>:/local/nsight-reports/ /tmp/nsight-reports/
+```
+
+If the pods have completed, create a helper pod with the hostPath mounted:
+
+```bash
+# First, find the node name where the pod ran:
+kubectl get pods -o wide | grep llama3-2-1b-fsdp-nsight
+
+# Then create a helper pod on that node:
+kubectl run nsys-copy --image=busybox --restart=Never --overrides='
+{
+  "spec": {
+    "nodeSelector": {"kubernetes.io/hostname": "<node-name>"},
+    "volumes": [{"name": "local", "hostPath": {"path": "/mnt/k8s-disks/0"}}],
+    "containers": [{"name": "copy", "image": "busybox", "command": ["sleep", "300"],
+      "volumeMounts": [{"name": "local", "mountPath": "/local"}]}]
+  }
+}'
+kubectl cp nsys-copy:/local/nsight-reports/ /tmp/nsight-reports/
+kubectl delete pod nsys-copy
+```
+
+## 8.5 Automated bottleneck analysis
+
+The `EKS/nsys_analyze.py` script parses `.nsys-rep` files and generates a structured bottleneck report. It classifies GPU kernels into categories (NCCL, GEMM, Flash Attention, etc.), identifies the dominant bottleneck type, and provides actionable recommendations.
+
+Run analysis on-cluster (where nsys is available) or locally (if nsys is installed):
+
+```bash
+# Analyze a directory of reports
+python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/ --output /tmp/analysis.md
+
+# JSON output for programmatic use
+python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/ --format json --output /tmp/analysis.json
+
+# Specify nsys binary explicitly (version depends on your node)
+python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/ \
+  --nsys-bin /opt/nvidia/nsight-systems/<version>/target-linux-x64/nsys
+```
+
+The analysis output includes:
+- **GPU Kernel Time Breakdown** by category (NCCL, GEMM, Attention, Optimizer, etc.)
+- **Bottleneck Classification** (Communication Bound, Compute Bound, Sync Bound, etc.)
+- **CUDA API Time** (identifies synchronization overhead)
+- **Memory Transfer Summary** (detects activation offloading overhead)
+- **PyTorch Operation Breakdown** (from NVTX annotations)
+- **Cross-Worker Comparison** (when analyzing multiple reports)
+- **Recommendations** (e.g., enable EFA, disable activation offloading, increase batch size)
+
+## 8.6 Key notes and gotchas
+
+1. **`--gpu-metrics-devices` is NOT supported on A10G (g5 instances)** — Requires elevated privileges (`ERR_NVGPUCTRPERM`). Set `NSYS_GPU_METRICS=none`. Works on A100/H100/H200.
+
+2. **`--kill=none` is critical** — Without it, nsys sends SIGTERM to the training process when `--duration` expires. With `--kill=none`, training continues and the report is written when the profiling window ends.
+
+3. **`--pytorch=autograd-shapes-nvtx`** requires nsys >= 2024.5. HyperPod nodes with nsys 2025.6.1 support it.
+
+4. **Report sizes** — With PyTorch NVTX + Python sampling + CUDA memory tracking, expect ~80-90 MB per rank per 120s window. Plan storage accordingly.
+
+5. **Selective profiling** — For runs with > 8 GPUs, set `NSYS_RANKS_TO_PROFILE=0` to profile only rank 0. Non-profiled ranks run the training command directly with zero overhead.
+
+6. **`restartPolicy: Never`** is recommended for profiling jobs to avoid restart loops.
+
+7. **EFA for production profiling** — The reference manifest disables EFA (for g5/A10G testing). For production profiling on P4/P5 instances, uncomment the EFA environment variables in the manifest and ensure the container image includes the [OFI-NCCL plugin](https://github.com/aws/aws-ofi-nccl). Without EFA, NCCL falls back to TCP, which will show as communication-bound in the profiling results. Use `NCCL_TUNER_PLUGIN` to auto-select optimal NCCL protocols for your instance type.
+
+## 8.7 Running recipes for deeper analysis
+
+After copying reports locally, you can run nsys recipes for specialized analysis.
+These require nsys to be available (run on-cluster via `kubectl exec`, or locally if nsys is installed):
+
+```bash
+# Set NSYS to the version available on your node, e.g.:
+NSYS=$(ls -d /opt/nvidia/nsight-systems/*/target-linux-x64/nsys | sort -rV | head -1)
+REPORT=/tmp/nsight-reports/report_rank0_hostname_20250301_120000.nsys-rep
+
+# NCCL communication summary
+$NSYS recipe nccl_sum --input $REPORT
+
+# NCCL + GPU compute overlap (are comms hidden behind compute?)
+$NSYS recipe nccl_gpu_overlap_trace --input $REPORT
+
+# GPU idle gaps (where is the GPU waiting?)
+$NSYS recipe gpu_gaps --input $REPORT
+
+# CUDA kernel pacing (identifies stragglers)
+$NSYS recipe cuda_gpu_kern_pace --input $REPORT
+
+# GPU time utilization heatmap
+$NSYS recipe cuda_gpu_time_util_map --input $REPORT
+```
