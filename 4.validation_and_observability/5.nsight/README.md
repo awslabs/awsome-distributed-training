@@ -391,7 +391,7 @@ The sidecar injector approach in Section 7 requires pulling an Nsight Docker ima
 **Quick start:**
 1. Verify nsys is on nodes: `ls /opt/nvidia/nsight-systems/`
 2. Create ConfigMap: `kubectl create configmap nsight-scripts --from-file=nsys-profile.sh=EKS/nsys-profile.sh`
-3. Apply the profiled job: `kubectl apply -f llama3_2_1b-fsdp-nsight.yaml`
+3. Apply the profiled job: `kubectl apply -f EKS/llama3_2_1b-fsdp-nsight.yaml`
 4. Copy reports and run analysis: `python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/`
 
 **Prerequisites:**
@@ -491,7 +491,12 @@ volumeMounts:
 Run the job:
 
 ```bash
-kubectl apply -f llama3_2_1b-fsdp-nsight.yaml
+# Edit the manifest to set your image, node count, and GPU count, then:
+kubectl apply -f EKS/llama3_2_1b-fsdp-nsight.yaml
+
+# Or use envsubst to fill in variables:
+export IMAGE_URI=<your-ecr-image> NUM_NODES=2 GPU_PER_NODE=1
+envsubst < EKS/llama3_2_1b-fsdp-nsight.yaml | kubectl apply -f -
 ```
 
 The profiling wrapper will:
@@ -542,9 +547,9 @@ python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/ --output /tmp/analysi
 # JSON output for programmatic use
 python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/ --format json --output /tmp/analysis.json
 
-# Specify nsys binary explicitly
+# Specify nsys binary explicitly (version depends on your node)
 python3 EKS/nsys_analyze.py --reports /tmp/nsight-reports/ \
-  --nsys-bin /opt/nvidia/nsight-systems/2025.6.1/target-linux-x64/nsys
+  --nsys-bin /opt/nvidia/nsight-systems/<version>/target-linux-x64/nsys
 ```
 
 The analysis output includes:
@@ -570,13 +575,16 @@ The analysis output includes:
 
 6. **`restartPolicy: Never`** is recommended for profiling jobs to avoid restart loops.
 
+7. **EFA for production profiling** — The reference manifest disables EFA (for g5/A10G testing). For production profiling on P4/P5 instances, uncomment the EFA environment variables in the manifest and ensure the container image includes the [OFI-NCCL plugin](https://github.com/aws/aws-ofi-nccl). Without EFA, NCCL falls back to TCP, which will show as communication-bound in the profiling results. Use `NCCL_TUNER_PLUGIN` to auto-select optimal NCCL protocols for your instance type.
+
 ## 8.7 Running recipes for deeper analysis
 
 After copying reports locally, you can run nsys recipes for specialized analysis.
 These require nsys to be available (run on-cluster via `kubectl exec`, or locally if nsys is installed):
 
 ```bash
-NSYS=/opt/nvidia/nsight-systems/2025.6.1/target-linux-x64/nsys
+# Set NSYS to the version available on your node, e.g.:
+NSYS=$(ls -d /opt/nvidia/nsight-systems/*/target-linux-x64/nsys | sort -rV | head -1)
 REPORT=/tmp/nsight-reports/report_rank0_hostname_20250301_120000.nsys-rep
 
 # NCCL communication summary

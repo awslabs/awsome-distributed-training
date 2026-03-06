@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
 # nsys-profile.sh — Nsight Systems profiling wrapper for EKS distributed training
 #
 # This script wraps a training command with `nsys profile` using modern best practices.

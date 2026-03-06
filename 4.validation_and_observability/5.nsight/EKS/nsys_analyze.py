@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 """nsys_analyze.py — Automated Nsight Systems report analysis for distributed training.
 
 Runs nsys stats on .nsys-rep files, categorizes GPU kernels, identifies bottlenecks,
@@ -122,12 +124,9 @@ def find_nsys(nsys_bin: Optional[str] = None) -> str:
     """Find nsys binary."""
     if nsys_bin and os.path.isfile(nsys_bin):
         return nsys_bin
-    # Search common paths
-    search = [
-        "/opt/nvidia/nsight-systems/2025.6.1/target-linux-x64/nsys",
-        "/opt/nvidia/nsight-systems/2025.6.1/bin/nsys",
-    ]
+    # Search common paths (newest version first via reverse sort)
     import glob
+    search = []
     search += sorted(glob.glob("/opt/nvidia/nsight-systems/*/target-linux-x64/nsys"), reverse=True)
     search += sorted(glob.glob("/opt/nvidia/nsight-systems/*/bin/nsys"), reverse=True)
     search += sorted(glob.glob("/nsight/*/target-linux-x64/nsys"), reverse=True)
