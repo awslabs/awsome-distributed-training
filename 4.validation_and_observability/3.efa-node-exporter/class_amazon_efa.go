@@ -257,64 +257,88 @@ func parseAmazonEfaCounters(portPath string) (*AmazonEfaCounters, error) {
 		//vp := util.NewValueParser(value)
 
 		switch f.Name() {
-			case "impaired_remote_conn_events":
-				counters.ImpairedRemoteConnEvents, err = parseUInt64(value)
-			case "lifespan":
-				counters.Lifespan, err = parseUInt64(value)
-			case "rdma_read_bytes":
-				counters.RdmaReadBytes, err = parseUInt64(value)
-			case "rdma_read_resp_bytes":
-				counters.RdmaReadRespBytes, err = parseUInt64(value)
-			case "rdma_read_wr_err":
-				counters.RdmaReadWrErr, err = parseUInt64(value)
-			case "rdma_read_wrs":
-				counters.RdmaReadWrs, err = parseUInt64(value)
-			case "rdma_write_bytes":
-				counters.RdmaWriteBytes, err = parseUInt64(value)
-			case "rdma_write_recv_bytes":
-				counters.RdmaWriteRecvBytes, err = parseUInt64(value)
-			case "rdma_write_wr_err":
-				counters.RdmaWriteWrErr, err = parseUInt64(value)
-			case "rdma_write_wrs":
-				counters.RdmaWriteWrs, err = parseUInt64(value)
-			case "recv_bytes":
-				counters.RecvBytes, err = parseUInt64(value)
-			case "recv_wrs":
-				counters.RecvWrs, err = parseUInt64(value)
-			case "retrans_bytes":
-				counters.RetransBytes, err = parseUInt64(value)
-			case "retrans_pkts":
-				counters.RetransPkts, err = parseUInt64(value)
-			case "retrans_timeout_events":
-				counters.RetransTimeoutEvents, err = parseUInt64(value)
-			case "rx_bytes":
-				counters.RxBytes, err = parseUInt64(value)
-			case "rx_drops":
-				counters.RxDrops, err = parseUInt64(value)
-			case "rx_pkts":
-				counters.RxPkts, err = parseUInt64(value)
-			case "send_bytes":
-				counters.SendBytes, err = parseUInt64(value)
-			case "send_wrs":
-				counters.SendWrs, err = parseUInt64(value)
-			case "tx_bytes":
-				counters.TxBytes, err = parseUInt64(value)
-			case "tx_pkts":
-				counters.TxPkts, err = parseUInt64(value)
-			case "unresponsive_remote_events":
-				counters.UnresponsiveRemoteEvents, err = parseUInt64(value)
+		case "alloc_pd_err":
+			counters.AllocPdErr, err = parseUInt64(value)
+		case "alloc_ucontext_err":
+			counters.AllocUcontextErr, err = parseUInt64(value)
+		case "cmds_err":
+			counters.CmdsErr, err = parseUInt64(value)
+		case "completed_cmds":
+			counters.CompletedCmds, err = parseUInt64(value)
+		case "create_ah_err":
+			counters.CreateAhErr, err = parseUInt64(value)
+		case "create_cq_err":
+			counters.CreateCqErr, err = parseUInt64(value)
+		case "create_qp_err":
+			counters.CreateQpErr, err = parseUInt64(value)
+		case "impaired_remote_conn_events":
+			counters.ImpairedRemoteConnEvents, err = parseUInt64(value)
+		case "keep_alive_rcvd":
+			counters.KeepAliveRcvd, err = parseUInt64(value)
+		case "lifespan":
+			counters.Lifespan, err = parseUInt64(value)
+		case "mmap_err":
+			counters.MmapErr, err = parseUInt64(value)
+		case "no_completion_cmds":
+			counters.NoCompletionCmds, err = parseUInt64(value)
+		case "rdma_read_bytes":
+			counters.RdmaReadBytes, err = parseUInt64(value)
+		case "rdma_read_resp_bytes":
+			counters.RdmaReadRespBytes, err = parseUInt64(value)
+		case "rdma_read_wr_err":
+			counters.RdmaReadWrErr, err = parseUInt64(value)
+		case "rdma_read_wrs":
+			counters.RdmaReadWrs, err = parseUInt64(value)
+		case "rdma_write_bytes":
+			counters.RdmaWriteBytes, err = parseUInt64(value)
+		case "rdma_write_recv_bytes":
+			counters.RdmaWriteRecvBytes, err = parseUInt64(value)
+		case "rdma_write_wr_err":
+			counters.RdmaWriteWrErr, err = parseUInt64(value)
+		case "rdma_write_wrs":
+			counters.RdmaWriteWrs, err = parseUInt64(value)
+		case "recv_bytes":
+			counters.RecvBytes, err = parseUInt64(value)
+		case "recv_wrs":
+			counters.RecvWrs, err = parseUInt64(value)
+		case "reg_mr_err":
+			counters.RegMrErr, err = parseUInt64(value)
+		case "retrans_bytes":
+			counters.RetransBytes, err = parseUInt64(value)
+		case "retrans_pkts":
+			counters.RetransPkts, err = parseUInt64(value)
+		case "retrans_timeout_events":
+			counters.RetransTimeoutEvents, err = parseUInt64(value)
+		case "rx_bytes":
+			counters.RxBytes, err = parseUInt64(value)
+		case "rx_drops":
+			counters.RxDrops, err = parseUInt64(value)
+		case "rx_pkts":
+			counters.RxPkts, err = parseUInt64(value)
+		case "send_bytes":
+			counters.SendBytes, err = parseUInt64(value)
+		case "send_wrs":
+			counters.SendWrs, err = parseUInt64(value)
+		case "submitted_cmds":
+			counters.SubmittedCmds, err = parseUInt64(value)
+		case "tx_bytes":
+			counters.TxBytes, err = parseUInt64(value)
+		case "tx_pkts":
+			counters.TxPkts, err = parseUInt64(value)
+		case "unresponsive_remote_events":
+			counters.UnresponsiveRemoteEvents, err = parseUInt64(value)
+		}
 
-			if err != nil {
-				// Ugly workaround for handling https://github.com/prometheus/node_exporter/issues/966
-				// when counters are `N/A (not available)`.
-				// This was already patched and submitted, see
-				// https://www.spinics.net/lists/linux-rdma/msg68596.html
-				// Remove this as soon as the fix lands in the enterprise distros.
-				if strings.Contains(value, "N/A (no PMA)") {
-					continue
-				}
-				return nil, err
+		if err != nil {
+			// Ugly workaround for handling https://github.com/prometheus/node_exporter/issues/966
+			// when counters are `N/A (not available)`.
+			// This was already patched and submitted, see
+			// https://www.spinics.net/lists/linux-rdma/msg68596.html
+			// Remove this as soon as the fix lands in the enterprise distros.
+			if strings.Contains(value, "N/A (no PMA)") {
+				continue
 			}
+			return nil, fmt.Errorf("failed to parse counter %s with value %q: %w", f.Name(), value, err)
 		}
 	}
 
