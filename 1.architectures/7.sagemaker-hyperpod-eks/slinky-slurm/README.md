@@ -52,48 +52,99 @@ cp -r awsome-distributed-training/1.architectures/7.sagemaker-hyperpod-eks/slink
 cd slinky-slurm 
 ```
 
-#### <u>Deploy Using CloudFormation</u> 
+#### <u>Deploy Using the Deployment Script</u>
 
-Use one of the provided `*-params.json` files to set the CloudFormation stack parameters. 
+The `deploy.sh` script automates infrastructure deployment via CloudFormation or Terraform. It handles availability zone resolution, parameter substitution, and environment variable extraction.
 
-For using 4 `ml.g5.8xlarge` instances:
+**Prerequisites:** `aws` CLI, `jq` (for CloudFormation), or `terraform` (for Terraform).
+
+Deploy using CloudFormation with 4 `ml.g5.8xlarge` instances:
 ```
-export PARAMS="g5/g5-params.json"
+./deploy.sh --node-type g5 --infra cfn
 ```
-For using 2 `ml.p5.48xlarge` instances: 
+Deploy using CloudFormation with 2 `ml.p5.48xlarge` instances:
 ```
-export PARAMS="p5/p5-params.json"
+./deploy.sh --node-type p5 --infra cfn
 ```
-Curl the `main-stack.yaml` template and issue an `aws cloudformation create-stack` command to deploy the specified HyperPod cluster infrastructure: 
+Deploy using Terraform:
+```
+./deploy.sh --node-type g5 --infra tf
+```
+Override the default region and availability zone:
+```
+./deploy.sh --node-type g5 --infra cfn --region us-east-1 --az-id use1-az2
+```
+
+The script resolves up to 5 non-opt-in availability zones for the target region, substitutes AZ IDs into the parameters files, deploys the stack, waits for completion, and writes the stack outputs to `env_vars.sh`. After the script completes:
+
+```
+source env_vars.sh
+```
+
+Run `./deploy.sh --help` for all available options.
+
+---
+
+<details>
+<summary><b>Manual Deployment (Alternative)</b></summary>
+
+#### <u>Deploy Using CloudFormation (Manual)</u> 
+
+Deploy the HyperPod EKS infrastructure using the official
+[SageMaker HyperPod CloudFormation templates](https://github.com/aws/sagemaker-hyperpod-cluster-setup/tree/main/eks/cloudformation).
+Use the provided `params.json` file to set the stack parameters.
+
+```
+export PARAMS="params.json"
+```
+
+NOTE: The `params.json` file defaults to `ml.g5.8xlarge` x 4 (g5 profile) with
+`us-west-2` AZ IDs. For p5, edit the `InstanceGroupSettings1` value to use
+`ml.p5.48xlarge` x 2. If deploying in a different region, update
+`AvailabilityZoneIds`, `FsxAvailabilityZoneId`, and the
+`TargetAvailabilityZoneId` values inside `InstanceGroupSettings1` to match
+your target region's availability zone IDs.
+
+Set your region and deploy the stack using the S3-hosted template:
 ```
 export AWS_REGION=<your-region-here> # e.g. us-west-2
 
-curl -O https://raw.githubusercontent.com/awslabs/awsome-distributed-training/refs/heads/main/1.architectures/7.sagemaker-hyperpod-eks/cfn-templates/nested-stacks/main-stack.yaml 
-
 aws cloudformation create-stack \
---stack-name  hp-eks-slinky-stack \
---template-body  file://main-stack.yaml \
---region $AWS_REGION \
- --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
---parameters file://$PARAMS
+  --region $AWS_REGION \
+  --stack-name hp-eks-slinky-stack \
+  --template-url https://aws-sagemaker-hyperpod-cluster-setup-${AWS_REGION}-prod.s3.${AWS_REGION}.amazonaws.com/templates/main-stack-eks-based-template.yaml \
+  --parameters file://$PARAMS \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
 ```
-Run the `create_config.sh` script to set your environment variables using the output of the deployed CloudFormation stack: 
+Wait for the stack to complete, then set your environment variables from the
+stack outputs:
 ```
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 export STACK_ID=hp-eks-slinky-stack
 
-curl -O https://raw.githubusercontent.com/awslabs/awsome-distributed-training/refs/heads/main/1.architectures/7.sagemaker-hyperpod-eks/create_config.sh 
+export EKS_CLUSTER_NAME=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_ID --region $AWS_REGION \
+  --query "Stacks[0].Outputs[?OutputKey=='OutputEKSClusterName'].OutputValue" \
+  --output text)
 
-chmod +x create_config.sh
+export VPC_ID=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_ID --region $AWS_REGION \
+  --query "Stacks[0].Outputs[?OutputKey=='OutputVpcId'].OutputValue" \
+  --output text)
 
-./create_config.sh
+export PRIVATE_SUBNET_ID=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_ID --region $AWS_REGION \
+  --query "Stacks[0].Outputs[?OutputKey=='OutputPrivateSubnetIds'].OutputValue" \
+  --output text | cut -d',' -f1)
 
-source env_vars
+export SECURITY_GROUP_ID=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_ID --region $AWS_REGION \
+  --query "Stacks[0].Outputs[?OutputKey=='OutputSecurityGroupId'].OutputValue" \
+  --output text)
 ```
----
 
-#### <u>Deploy Using Terraform</u>
+#### <u>Deploy Using Terraform (Manual)</u>
 
 Copy the Terraform modules: 
 ```
@@ -101,31 +152,33 @@ cd ..
 cp -r awsome-distributed-training/1.architectures/7.sagemaker-hyperpod-eks/terraform-modules .
 cd terraform-modules/hyperpod-eks-tf
 ```
-Use one of the provided `*-custom.tfvars` files to set the Terraform Module parameters. 
+Use the provided `custom.tfvars` file to set the Terraform Module
+parameters. 
 
-For using 4 `ml.g5.8xlarge` instances:
 ```
-cp ../../slinky-slurm/g5/g5-custom.tfvars .
-export PARAMS="g5-custom.tfvars"
+cp ../../slinky-slurm/custom.tfvars .
+export PARAMS="custom.tfvars"
 ```
-For using 2 `ml.p5.48xlarge` instances: 
-```
-cp ../../slinky-slurm/p5/p5-custom.tfvars .
-export PARAMS="p5-custom.tfvars"
-```
+
+NOTE: The `custom.tfvars` file defaults to `ml.g5.8xlarge` x 4 (g5 profile).
+For p5, edit `instance_type` to `ml.p5.48xlarge` and `instance_count` to `2`
+in the accelerated instance group before deploying.
 Initialize the Terraform modules: 
 ```
 terraform init
 ```
-Generate an execution plan to validate the configuration of the Terraform modules: 
+Generate an execution plan to validate the configuration of the Terraform
+modules: 
 ```
 terraform plan -var-file=$PARAMS
 ```
-Apply the Terraform modules to deploy the specified HyperPod cluster infrastructure: 
+Apply the Terraform modules to deploy the specified HyperPod cluster
+infrastructure: 
 ```
-terraform apply  -var-file=$PARAMS
+terraform apply -var-file=$PARAMS
 ```
-Run the `terraform_outputs.sh` script, which populates the `env_vars.sh` script with your environment variables: 
+Run the `terraform_outputs.sh` script, which populates the `env_vars.sh`
+script with your environment variables: 
 ```
 cd ..
 chmod +x terraform_outputs.sh
@@ -134,6 +187,9 @@ cat env_vars.sh
 source env_vars.sh
 cd ..
 ```
+
+</details>
+
 ---
 Verify that the required environment variables are set: 
 ```
@@ -941,6 +997,29 @@ cd /fsx/awsome-distributed-training/3.test_cases/pytorch/FSDP/slurm
 
 # highlight changes, show timestamps, 5 second updates
 watch -n 5 -d "ls -lh checkpoints"
+```
+
+* * *
+
+### Development & Testing:
+
+The `deploy.sh` script and its helper library `lib/deploy_helpers.sh` are
+tested using [bats-core](https://github.com/bats-core/bats-core). The test
+suite covers argument parsing, node profile resolution, AZ validation,
+CloudFormation parameter substitution (jq), and Terraform variable overrides
+(sed/awk).
+
+```
+# One-time setup: install bats-core
+brew install bats-core            # macOS
+sudo apt-get install -y bats      # Debian/Ubuntu
+npm install -g bats               # cross-platform
+
+# One-time setup: install bats helper libraries
+bash tests/install_bats_libs.sh
+
+# Run all tests (34 tests)
+bats tests/test_deploy.bats
 ```
 
 * * *

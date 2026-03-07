@@ -3,3 +3,6 @@ slurm*/
 *.tgz
 
 new-values.yaml
+
+# bats helper libraries (installed via tests/install_bats_libs.sh)
+tests/bats/
