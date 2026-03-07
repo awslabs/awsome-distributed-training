@@ -7,9 +7,16 @@
 ## Project Overview
 
 This project contains Helm values, Kubernetes manifests, Dockerfiles, Terraform/CloudFormation
-parameters, Slurm batch scripts, and documentation. There is **no application source code**
-(no Python/Go/TS modules). Two hardware profiles exist under `g5/` and `p5/` directories with
-parallel file structures.
+parameters, Slurm batch scripts, deployment automation scripts, and documentation. There is
+**no application source code** (no Python/Go/TS modules). Two hardware profiles exist under
+`g5/` and `p5/` directories with parallel file structures (Helm values and sbatch files only —
+`params.json` and `custom.tfvars` have been consolidated to the project root).
+
+Key automation scripts:
+- **`deploy.sh`** — Infrastructure deployment via CloudFormation or Terraform
+- **`lib/deploy_helpers.sh`** — Extracted testable functions sourced by `deploy.sh`
+- **`params.json`** — CloudFormation parameters (40 params, g5 defaults)
+- **`custom.tfvars`** — Terraform variables (g5 defaults)
 
 ## Build / Validate / Test Commands
 
@@ -63,22 +70,45 @@ The GitHub Actions workflow `pr-review-and-slurm-test.yml` runs on PRs to `main`
 
 ### Tests
 
-The repo root `conftest.py` provides pytest fixtures (`docker_build`, `docker_run`,
-`change_test_dir`) for Docker-based tests. No tests exist in this subdirectory specifically.
+Bash scripts are tested using [bats-core](https://github.com/bats-core/bats-core) with
+bats-assert and bats-support helper libraries. The repo root `conftest.py` provides legacy
+pytest fixtures for Docker-based tests but should not be used as a reference for new tests.
 
 ```bash
-# Run all tests from repo root (if any test_*.py files exist in subdirs)
-pytest -xvs
+# One-time setup: install bats-core
+brew install bats-core            # macOS
+# OR: sudo apt-get install -y bats  # Debian/Ubuntu
+# OR: npm install -g bats           # cross-platform
 
-# Run a single test file
-pytest -xvs path/to/test_file.py
+# One-time setup: install bats helper libraries
+bash tests/install_bats_libs.sh
 
-# Run a single test function
-pytest -xvs path/to/test_file.py::test_function_name
+# Run all bats tests
+bats tests/
 
-# Keep Docker artifacts after test run
-pytest --keep-artifacts=true
+# Run a specific test file
+bats tests/test_deploy.bats
+
+# Verbose output (show test names)
+bats --verbose-run tests/test_deploy.bats
 ```
+
+Test structure:
+- `tests/test_deploy.bats` — 34 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
+- `tests/fixtures/` — Independent copies of `params.json` and `custom.tfvars` for test isolation
+- `tests/helpers/setup.bash` — Common bats setup/teardown (loads helpers, creates temp dir,
+  sources `lib/deploy_helpers.sh`, activates AWS CLI mock)
+- `tests/helpers/mock_aws.bash` — AWS CLI mock function that intercepts `aws` calls with
+  canned responses
+- `tests/install_bats_libs.sh` — Clones bats-assert and bats-support into `tests/bats/`
+  (gitignored, not committed)
+
+When adding new bash scripts, follow this pattern:
+1. Extract testable functions into `lib/<script>_helpers.sh`
+2. Source the helpers file from the main script
+3. Add fixture data to `tests/fixtures/`
+4. Write tests in `tests/test_<script>.bats`
+5. Load `helpers/setup` at the top of each `.bats` file
 
 ## Code Style Guidelines
 
@@ -95,7 +125,7 @@ Defined in `/.editorconfig`:
 ### File Naming
 
 - Lowercase with hyphens: `lustre-pvc-slurm.yaml`, `openzfs-storageclass.yaml`
-- Instance-type prefix for profile-specific files: `g5-values.yaml`, `p5-params.json`
+- Instance-type prefix for profile-specific files: `g5-values.yaml`, `p5-values.yaml`
 - Dockerfile uses PascalCase extension: `dlc-slurmd.Dockerfile`
 - Model names in sbatch files may use underscores: `g5-llama2_7b-training.sbatch`
 
@@ -131,7 +161,7 @@ Defined in `/.editorconfig`:
 
 ### JSON Conventions
 
-- **2-space indentation** (preferred; the p5-params.json uses 4-space but should be normalized)
+- **2-space indentation**
 - Standard JSON (no trailing commas)
 - CloudFormation parameter keys use PascalCase per AWS convention
 
@@ -144,7 +174,8 @@ Defined in `/.editorconfig`:
 ### Shell / Slurm Batch Scripts (.sbatch)
 
 - Shebang: `#!/bin/bash`
-- Error handling: `set -ex` at the top of every script
+- Error handling: `set -ex` at the top of every sbatch script
+  - For automation scripts (`deploy.sh`, etc.), prefer `set -euo pipefail`
   - For prolog/epilog scripts, prefer `set -euo pipefail`
 - Environment variables: `SCREAMING_SNAKE_CASE`
 - Group variables by category with decorative section headers:
@@ -200,7 +231,12 @@ Defined in `/.editorconfig`:
 ## Keeping g5/ and p5/ in Sync
 
 The `g5/` and `p5/` directories are structural mirrors. When modifying one, check whether the
-same change should be applied to the other. Known intentional differences:
+same change should be applied to the other. The `params.json` and `custom.tfvars` files have
+been consolidated to the project root (g5 defaults); `deploy.sh` conditionally overrides values
+for p5 at deploy time. The g5/ and p5/ directories now only contain Helm values files and
+sbatch scripts.
+
+Known intentional differences:
 
 - `nodeSelector` instance types (`ml.g5.8xlarge` vs `ml.p5.48xlarge`)
 - GPU counts and EFA interface counts in `resources`

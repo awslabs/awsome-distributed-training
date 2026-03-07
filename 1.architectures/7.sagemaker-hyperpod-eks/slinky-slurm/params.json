@@ -1,0 +1,162 @@
+[
+  {
+    "ParameterKey": "HyperPodClusterName",
+    "ParameterValue": "slinky-hp-cluster"
+  },
+  {
+    "ParameterKey": "ResourceNamePrefix",
+    "ParameterValue": "slinky-hp-eks"
+  },
+  {
+    "ParameterKey": "ResourceNameShortPrefix",
+    "ParameterValue": "slinky1eks"
+  },
+  {
+    "ParameterKey": "Stage",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "NodeRecovery",
+    "ParameterValue": "Automatic"
+  },
+  {
+    "ParameterKey": "NodeProvisioningMode",
+    "ParameterValue": "Continuous"
+  },
+  {
+    "ParameterKey": "AutoScalerType",
+    "ParameterValue": "Karpenter"
+  },
+  {
+    "ParameterKey": "HyperPodClusterRole",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "InstanceGroupSettings1",
+    "ParameterValue": "[{\"InstanceCount\":4,\"InstanceGroupName\":\"accelerated-instance-group-1\",\"InstanceType\":\"ml.g5.8xlarge\",\"TargetAvailabilityZoneId\":\"usw2-az2\",\"ThreadsPerCore\":1,\"InstanceStorageConfigs\":[{\"EbsVolumeConfig\":{\"VolumeSizeInGB\":500}}]},{\"InstanceCount\":2,\"InstanceGroupName\":\"general-instance-group-2\",\"InstanceType\":\"ml.m5.2xlarge\",\"TargetAvailabilityZoneId\":\"usw2-az2\",\"ThreadsPerCore\":1,\"InstanceStorageConfigs\":[{\"EbsVolumeConfig\":{\"VolumeSizeInGB\":500}}]}]"
+  },
+  {
+    "ParameterKey": "EnableObservabilityFeature",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "CreateHyperPodObservabilityRole",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "CreatePrometheusWorkspace",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "CreateGrafanaWorkspace",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "CreateGrafanaRole",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "TaskGovernanceMetricLevel",
+    "ParameterValue": "DISABLED"
+  },
+  {
+    "ParameterKey": "NodeMetricLevel",
+    "ParameterValue": "BASIC"
+  },
+  {
+    "ParameterKey": "ClusterMetricLevel",
+    "ParameterValue": "BASIC"
+  },
+  {
+    "ParameterKey": "NetworkMetricLevel",
+    "ParameterValue": "ADVANCED"
+  },
+  {
+    "ParameterKey": "TrainingMetricLevel",
+    "ParameterValue": "BASIC"
+  },
+  {
+    "ParameterKey": "AcceleratedComputeMetricLevel",
+    "ParameterValue": "BASIC"
+  },
+  {
+    "ParameterKey": "ScalingMetricLevel",
+    "ParameterValue": "DISABLED"
+  },
+  {
+    "ParameterKey": "Logging",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "TieredStorageConfig",
+    "ParameterValue": "{\"Mode\":\"Disable\"}"
+  },
+  {
+    "ParameterKey": "CreateTaskGovernanceClusterPolicyStack",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "PriorityClasses",
+    "ParameterValue": "[{\"Name\":\"inference\",\"Weight\":100},{\"Name\":\"experimentation\",\"Weight\":90},{\"Name\":\"training\",\"Weight\":80},{\"Name\":\"fine-tuning\",\"Weight\":70},{\"Name\":\"interactive\",\"Weight\":60}]"
+  },
+  {
+    "ParameterKey": "FairShare",
+    "ParameterValue": "Disabled"
+  },
+  {
+    "ParameterKey": "EnableHPInferenceFeature",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableHPInferenceAddonFeature",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "VpcCIDR",
+    "ParameterValue": "10.192.0.0/16"
+  },
+  {
+    "ParameterKey": "AvailabilityZoneIds",
+    "ParameterValue": "usw2-az1,usw2-az2,usw2-az3,usw2-az4"
+  },
+  {
+    "ParameterKey": "KubernetesVersion",
+    "ParameterValue": "1.34"
+  },
+  {
+    "ParameterKey": "HelmOperators",
+    "ParameterValue": "mlflow.enabled=true,trainingOperators.enabled=true,cluster-role-and-bindings.enabled=true,namespaced-role-and-bindings.enabled=true,neuron-device-plugin.devicePlugin.enabled=true,aws-efa-k8s-device-plugin.devicePlugin.enabled=true,mpi-operator.enabled=true,health-monitoring-agent.enabled=true,deep-health-check.enabled=true,job-auto-restart.enabled=true,hyperpod-patching.enabled=true,gpu-operator.enabled=true,nvidia-device-plugin.devicePlugin.enabled=false"
+  },
+  {
+    "ParameterKey": "EnableHPTrainingOperatorFeature",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "CreateFsxStack",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "StorageCapacity",
+    "ParameterValue": "1200"
+  },
+  {
+    "ParameterKey": "PerUnitStorageThroughput",
+    "ParameterValue": "250"
+  },
+  {
+    "ParameterKey": "DataCompressionType",
+    "ParameterValue": "LZ4"
+  },
+  {
+    "ParameterKey": "FileSystemTypeVersion",
+    "ParameterValue": "2.15"
+  },
+  {
+    "ParameterKey": "DeploymentType",
+    "ParameterValue": "PERSISTENT_2"
+  },
+  {
+    "ParameterKey": "FsxAvailabilityZoneId",
+    "ParameterValue": "usw2-az2"
+  }
+]
