@@ -9,7 +9,7 @@
 This project contains Helm values, Kubernetes manifests, Dockerfiles, Terraform/CloudFormation
 parameters, Slurm batch scripts, deployment automation scripts, and documentation. There is
 **no application source code** (no Python/Go/TS modules). Two hardware profiles exist under
-`g5/` and `p5/` directories with parallel file structures (Helm values and sbatch files only —
+`g5/` and `p5/` directories with parallel file structures (sbatch files only —
 `params.json` and `custom.tfvars` have been consolidated to the project root).
 
 Key automation scripts:
