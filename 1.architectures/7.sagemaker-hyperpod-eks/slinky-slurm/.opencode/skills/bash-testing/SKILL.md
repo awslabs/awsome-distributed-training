@@ -1,3 +1,8 @@
+---
+name: bash-testing
+description: Patterns for unit testing bash scripts using bats-core, including AWS CLI mocking, jq/sed/awk testing, and cross-platform portability
+---
+
 # Bash Testing with bats-core
 
 ## Overview
