@@ -1,0 +1,153 @@
+# SPDX-FileCopyrightText: Copyright (C) SchedMD LLC.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Slinky Slurm Helm values template for HyperPod EKS.
+# Chart: oci://ghcr.io/slinkyproject/charts/slurm v1.0.1
+#
+# Shell template variables (substituted by setup.sh):
+#   ${ssh_key}              - SSH public key for root login access
+#   ${image_repository}     - ECR image repository URI for slurmd DLC
+#   ${image_tag}            - Container image tag (e.g. 25.11.1-ubuntu24.04)
+#   ${mgmt_instance_type}   - Management node instance type (e.g. ml.m5.2xlarge)
+#   ${accel_instance_type}  - Accelerated node instance type (e.g. ml.g5.8xlarge)
+#   ${gpu_count}            - GPUs per compute pod (1 for g5, 8 for p5)
+#   ${efa_count}            - EFA interfaces per compute pod (1 for g5, 32 for p5)
+#   ${gpu_gres}             - GRES string (e.g. gpu:a10g:1 or gpu:h100:8)
+#   ${replicas}             - Number of compute replicas (4 for g5, 2 for p5)
+#   ${pvc_name}             - PVC name for FSx for Lustre (e.g. fsx-claim)
+
+# Inter-pod anti-affinity and node affinity for non-compute components
+commonAffinity: &commonAffinity
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+          - key: "node.kubernetes.io/instance-type"
+            operator: In
+            values:
+              - "${mgmt_instance_type}"
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: "app.kubernetes.io/name"
+            operator: In
+            values: ["slurmdbd", "slurmctld", "slurm-exporter", "login", "mariadb", "slurmrestd"]
+        topologyKey: "kubernetes.io/hostname"
+
+# Slurm controller (slurmctld) configurations.
+controller:
+  persistence:
+    storageClassName: gp3
+  podSpec:
+    affinity: *commonAffinity
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# Slurm accounting (slurmdbd) configurations.
+accounting:
+  enabled: true
+  podSpec:
+    affinity: *commonAffinity
+
+# Slurm REST API (slurmrestd) configurations.
+restapi:
+  podSpec:
+    affinity: *commonAffinity
+
+# Login node configurations.
+loginsets:
+  slinky:
+    enabled: true
+    replicas: 1
+    login:
+      volumeMounts:
+        - name: fsx-lustre
+          mountPath: /fsx
+        # Uncomment to mount FSx for OpenZFS
+        # - name: fsx-openzfs
+        #   mountPath: /home
+    rootSshAuthorizedKeys: |
+      ${ssh_key}
+    extraSshdConfig: |
+      AuthorizedKeysFile /root/.ssh/authorized_keys
+      ChallengeResponseAuthentication no
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+      PermitRootLogin yes
+      Port 22
+    podSpec:
+      affinity: *commonAffinity
+      volumes:
+        - name: fsx-lustre
+          persistentVolumeClaim:
+            claimName: ${pvc_name}
+        # Uncomment to mount FSx for OpenZFS
+        # - name: fsx-openzfs
+        #   persistentVolumeClaim:
+        #     claimName: openzfs-claim
+    service:
+      spec:
+        type: LoadBalancer
+      port: 22
+
+# Slurm compute (slurmd) configurations.
+nodesets:
+  slinky:
+    enabled: true
+    replicas: ${replicas}
+    slurmd:
+      image:
+        repository: ${image_repository}
+        tag: ${image_tag}
+      resources:
+        limits:
+          nvidia.com/gpu: "${gpu_count}"
+          vpc.amazonaws.com/efa: ${efa_count}
+        requests:
+          nvidia.com/gpu: "${gpu_count}"
+          vpc.amazonaws.com/efa: ${efa_count}
+      volumeMounts:
+        - name: fsx-lustre
+          mountPath: /fsx
+        - name: shmem
+          mountPath: /dev/shm
+        # Uncomment to mount FSx for OpenZFS
+        # - name: fsx-openzfs
+        #   mountPath: /home
+    podSpec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        node.kubernetes.io/instance-type: ${accel_instance_type}
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      volumes:
+        - name: fsx-lustre
+          persistentVolumeClaim:
+            claimName: ${pvc_name}
+        - name: shmem
+          hostPath:
+            path: /dev/shm
+        # Uncomment to mount FSx for OpenZFS
+        # - name: fsx-openzfs
+        #   persistentVolumeClaim:
+        #     claimName: openzfs-claim
+    extraConfMap:
+      Gres: ["${gpu_gres}"]
+
+# Enable DCGM GPU-to-job mapping integration
+vendor:
+  nvidia:
+    dcgm:
+      enabled: true
+
+# Generic Resource (GRES) Scheduling for GPUs
+configFiles:
+  gres.conf: |
+    AutoDetect=nvidia

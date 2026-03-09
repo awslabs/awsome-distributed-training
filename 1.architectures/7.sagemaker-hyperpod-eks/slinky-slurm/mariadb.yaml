@@ -1,0 +1,28 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: mariadb
+  namespace: slurm
+spec:
+  rootPasswordSecretKeyRef:
+    name: mariadb-root
+    key: password
+    generate: true
+  username: slurm
+  database: slurm_acct_db
+  passwordSecretKeyRef:
+    name: mariadb-password
+    key: password
+    generate: true
+  storage:
+    size: 16Gi
+  myCnf: |
+    [mariadb]
+    bind-address=*
+    default_storage_engine=InnoDB
+    binlog_format=row
+    innodb_autoinc_lock_mode=2
+    innodb_buffer_pool_size=4096M
+    innodb_lock_wait_timeout=900
+    innodb_log_file_size=1024M
+    max_allowed_packet=256M

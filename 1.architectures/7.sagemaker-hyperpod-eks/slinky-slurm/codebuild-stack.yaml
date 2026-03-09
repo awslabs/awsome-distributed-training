@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CodeBuild project for building and pushing the Slurmd Deep Learning
+  Container image to ECR. Deploy this stack from setup.sh before
+  triggering the first image build.
+
+Parameters:
+  RepositoryName:
+    Type: String
+    Default: dlc-slurmd
+    Description: ECR repository name for the slurmd container image.
+  ImageTag:
+    Type: String
+    Default: 25.11.1-ubuntu24.04
+    Description: Default image tag for the container build.
+  SourceS3Bucket:
+    Type: String
+    Description: >
+      S3 bucket containing the build context (Dockerfile + buildspec).
+      Created and uploaded by setup.sh.
+  SourceS3Key:
+    Type: String
+    Default: codebuild/slurmd-build-context.zip
+    Description: S3 key for the build context zip archive.
+
+Resources:
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref RepositoryName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${RepositoryName}-codebuild-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildECRAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Push to project ECR repository
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource: !GetAtt ECRRepository.Arn
+              # Pull DLC base image from public AWS ECR
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: "arn:aws:ecr:us-east-1:763104351884:repository/*"
+              # CloudWatch Logs
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+              # S3 source access
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "arn:aws:s3:::${SourceS3Bucket}/${SourceS3Key}"
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${RepositoryName}-build"
+      Description: Builds the Slurmd Deep Learning Container image
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref "AWS::AccountId"
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref "AWS::Region"
+          - Name: REPO_NAME
+            Value: !Ref RepositoryName
+          - Name: IMAGE_TAG
+            Value: !Ref ImageTag
+      Source:
+        Type: S3
+        Location: !Sub "${SourceS3Bucket}/${SourceS3Key}"
+      TimeoutInMinutes: 60
+
+Outputs:
+  ECRRepositoryUri:
+    Description: ECR repository URI for the slurmd container image.
+    Value: !GetAtt ECRRepository.RepositoryUri
+  CodeBuildProjectName:
+    Description: CodeBuild project name for triggering builds.
+    Value: !Ref CodeBuildProject
+  CodeBuildRoleArn:
+    Description: IAM role ARN used by the CodeBuild project.
+    Value: !GetAtt CodeBuildRole.Arn

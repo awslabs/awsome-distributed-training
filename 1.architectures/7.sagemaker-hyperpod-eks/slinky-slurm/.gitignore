@@ -4,5 +4,14 @@ slurm*/
 
 new-values.yaml
 
+# Generated files (produced by setup.sh / install.sh)
+slurm-values.yaml
+slurm-login-service-patch.yaml
+env_vars.sh
+codebuild-tf/
+
+# Override repo-root 'lib/' ignore for our helper library
+!lib/
+
 # bats helper libraries (installed via tests/install_bats_libs.sh)
 tests/bats/

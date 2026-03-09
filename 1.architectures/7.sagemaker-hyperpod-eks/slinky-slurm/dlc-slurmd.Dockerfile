@@ -2,7 +2,7 @@
 FROM 763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.6.0-gpu-py312-cu126-ubuntu22.04-ec2 AS dlc
 
 # Second stage - Slurm compute node
-FROM ghcr.io/slinkyproject/slurmd:25.05.0-ubuntu24.04
+FROM ghcr.io/slinkyproject/slurmd:25.11.1-ubuntu24.04
 
 ARG PYTHON_SHORT_VERSION=3.12
 

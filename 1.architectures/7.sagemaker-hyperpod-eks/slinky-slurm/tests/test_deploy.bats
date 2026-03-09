@@ -376,3 +376,146 @@ load 'helpers/setup'
     assert_failure
     assert_output --partial "Error: Unknown option"
 }
+
+###########################
+## resolve_helm_profile ###
+###########################
+
+@test "resolve_helm_profile: g5 sets correct GPU/EFA/GRES/replicas" {
+    resolve_helm_profile "g5"
+    assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.g5.8xlarge"
+    assert_equal "${GPU_COUNT}" "1"
+    assert_equal "${EFA_COUNT}" "1"
+    assert_equal "${GPU_GRES}" "gpu:a10g:1"
+    assert_equal "${REPLICAS}" "4"
+    assert_equal "${MGMT_INSTANCE_TYPE}" "ml.m5.2xlarge"
+    assert_equal "${PVC_NAME}" "fsx-claim"
+}
+
+@test "resolve_helm_profile: p5 sets correct GPU/EFA/GRES/replicas" {
+    resolve_helm_profile "p5"
+    assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.p5.48xlarge"
+    assert_equal "${GPU_COUNT}" "8"
+    assert_equal "${EFA_COUNT}" "32"
+    assert_equal "${GPU_GRES}" "gpu:h100:8"
+    assert_equal "${REPLICAS}" "2"
+}
+
+@test "resolve_helm_profile: invalid node type returns 1" {
+    run resolve_helm_profile "p4"
+    assert_failure
+    assert_output --partial "Error: --node-type must be 'g5' or 'p5'"
+}
+
+###########################
+## values template sed ####
+###########################
+
+@test "values template: g5 substitution produces valid YAML" {
+    resolve_helm_profile "g5"
+
+    sed -e "s|\${image_repository}|123456789012.dkr.ecr.us-west-2.amazonaws.com/dlc-slurmd|g" \
+        -e "s|\${image_tag}|25.11.1-ubuntu24.04|g" \
+        -e "s|\${ssh_key}|ssh-ed25519 AAAAC3test test@example.com|g" \
+        -e "s|\${mgmt_instance_type}|${MGMT_INSTANCE_TYPE}|g" \
+        -e "s|\${accel_instance_type}|${HELM_ACCEL_INSTANCE_TYPE}|g" \
+        -e "s|\${gpu_count}|${GPU_COUNT}|g" \
+        -e "s|\${efa_count}|${EFA_COUNT}|g" \
+        -e "s|\${gpu_gres}|${GPU_GRES}|g" \
+        -e "s|\${replicas}|${REPLICAS}|g" \
+        -e "s|\${pvc_name}|${PVC_NAME}|g" \
+        "${FIXTURE_DIR}/slurm-values.yaml.template" > "${TEST_TEMP_DIR}/slurm-values.yaml"
+
+    # Verify key values were substituted
+    run grep 'ml.g5.8xlarge' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+
+    run grep 'ml.m5.2xlarge' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+
+    run grep 'gpu:a10g:1' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+
+    run grep 'replicas: 4' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+
+    # No unsubstituted template variables remain
+    run grep -c '${' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_failure
+}
+
+@test "values template: p5 substitution has correct instance type and GPU count" {
+    resolve_helm_profile "p5"
+
+    sed -e "s|\${image_repository}|123456789012.dkr.ecr.us-west-2.amazonaws.com/dlc-slurmd|g" \
+        -e "s|\${image_tag}|25.11.1-ubuntu24.04|g" \
+        -e "s|\${ssh_key}|ssh-ed25519 AAAAC3test test@example.com|g" \
+        -e "s|\${mgmt_instance_type}|${MGMT_INSTANCE_TYPE}|g" \
+        -e "s|\${accel_instance_type}|${HELM_ACCEL_INSTANCE_TYPE}|g" \
+        -e "s|\${gpu_count}|${GPU_COUNT}|g" \
+        -e "s|\${efa_count}|${EFA_COUNT}|g" \
+        -e "s|\${gpu_gres}|${GPU_GRES}|g" \
+        -e "s|\${replicas}|${REPLICAS}|g" \
+        -e "s|\${pvc_name}|${PVC_NAME}|g" \
+        "${FIXTURE_DIR}/slurm-values.yaml.template" > "${TEST_TEMP_DIR}/slurm-values.yaml"
+
+    run grep 'ml.p5.48xlarge' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+
+    run grep 'gpu:h100:8' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+
+    run grep 'replicas: 2' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+
+    run grep 'vpc.amazonaws.com/efa: 32' "${TEST_TEMP_DIR}/slurm-values.yaml"
+    assert_success
+}
+
+###########################
+## setup.sh arg parsing ###
+###########################
+
+@test "setup.sh: --help exits 0 and prints usage" {
+    run bash "${PROJECT_DIR}/setup.sh" --help
+    assert_success
+    assert_output --partial "Usage:"
+}
+
+@test "setup.sh: fails when --node-type is missing" {
+    run bash "${PROJECT_DIR}/setup.sh" --infra cfn
+    assert_failure
+    assert_output --partial "Error: --node-type is required"
+}
+
+@test "setup.sh: fails when --infra is missing" {
+    run bash "${PROJECT_DIR}/setup.sh" --node-type g5
+    assert_failure
+    assert_output --partial "Error: --infra is required"
+}
+
+###########################
+## install.sh arg parsing #
+###########################
+
+@test "install.sh: --help exits 0 and prints usage" {
+    run bash "${PROJECT_DIR}/install.sh" --help
+    assert_success
+    assert_output --partial "Usage:"
+}
+
+###########################
+## destroy.sh arg parsing #
+###########################
+
+@test "destroy.sh: --help exits 0 and prints usage" {
+    run bash "${PROJECT_DIR}/destroy.sh" --help
+    assert_success
+    assert_output --partial "Usage:"
+}
+
+@test "destroy.sh: fails when --infra is missing" {
+    run bash "${PROJECT_DIR}/destroy.sh"
+    assert_failure
+    assert_output --partial "Error: --infra is required"
+}

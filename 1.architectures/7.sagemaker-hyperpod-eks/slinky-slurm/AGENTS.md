@@ -14,9 +14,13 @@ parameters, Slurm batch scripts, deployment automation scripts, and documentatio
 
 Key automation scripts:
 - **`deploy.sh`** — Infrastructure deployment via CloudFormation or Terraform
-- **`lib/deploy_helpers.sh`** — Extracted testable functions sourced by `deploy.sh`
+- **`setup.sh`** — Container image build (CodeBuild/local), SSH keys, Helm values generation
+- **`install.sh`** — MariaDB, Slurm operator, Slurm cluster Helm installs, NLB config
+- **`destroy.sh`** — Reverse teardown of all deployed resources
+- **`lib/deploy_helpers.sh`** — Extracted testable functions sourced by `deploy.sh` and `setup.sh`
 - **`params.json`** — CloudFormation parameters (40 params, g5 defaults)
 - **`custom.tfvars`** — Terraform variables (g5 defaults)
+- **`slurm-values.yaml.template`** — Consolidated Helm values with shell template variables
 
 ## Build / Validate / Test Commands
 
@@ -37,8 +41,8 @@ docker buildx build -t dlc-slurmd:latest -f dlc-slurmd.Dockerfile .
 
 ```bash
 # Lint a values file against the upstream chart
-helm lint <chart-path> -f g5/g5-values.yaml
-helm template <release-name> <chart-path> -f g5/g5-values.yaml
+helm lint <chart-path> -f slurm-values.yaml
+helm template <release-name> <chart-path> -f slurm-values.yaml
 ```
 
 ### YAML Validation
@@ -94,8 +98,9 @@ bats --verbose-run tests/test_deploy.bats
 ```
 
 Test structure:
-- `tests/test_deploy.bats` — 34 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
-- `tests/fixtures/` — Independent copies of `params.json` and `custom.tfvars` for test isolation
+- `tests/test_deploy.bats` — 45 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
+- `tests/fixtures/` — Independent copies of `params.json`, `custom.tfvars`, and
+  `slurm-values.yaml.template` for test isolation
 - `tests/helpers/setup.bash` — Common bats setup/teardown (loads helpers, creates temp dir,
   sources `lib/deploy_helpers.sh`, activates AWS CLI mock)
 - `tests/helpers/mock_aws.bash` — AWS CLI mock function that intercepts `aws` calls with
@@ -175,7 +180,8 @@ Defined in `/.editorconfig`:
 
 - Shebang: `#!/bin/bash`
 - Error handling: `set -ex` at the top of every sbatch script
-  - For automation scripts (`deploy.sh`, etc.), prefer `set -euo pipefail`
+  - For automation scripts (`deploy.sh`, `setup.sh`, `install.sh`, `destroy.sh`),
+    prefer `set -euo pipefail`
   - For prolog/epilog scripts, prefer `set -euo pipefail`
 - Environment variables: `SCREAMING_SNAKE_CASE`
 - Group variables by category with decorative section headers:
@@ -233,13 +239,16 @@ Defined in `/.editorconfig`:
 The `g5/` and `p5/` directories are structural mirrors. When modifying one, check whether the
 same change should be applied to the other. The `params.json` and `custom.tfvars` files have
 been consolidated to the project root (g5 defaults); `deploy.sh` conditionally overrides values
-for p5 at deploy time. The g5/ and p5/ directories now only contain Helm values files and
+for p5 at deploy time. Helm values files have been consolidated into
+`slurm-values.yaml.template` at the project root. The g5/ and p5/ directories now only contain
 sbatch scripts.
 
-Known intentional differences:
+Known intentional differences (handled by `resolve_helm_profile` and `resolve_node_profile`):
 
-- `nodeSelector` instance types (`ml.g5.8xlarge` vs `ml.p5.48xlarge`)
-- GPU counts and EFA interface counts in `resources`
+- Instance types (`ml.g5.8xlarge` vs `ml.p5.48xlarge`)
+- GPU counts (1 vs 8) and EFA interface counts (1 vs 32)
+- Compute node replicas (4 vs 2)
+- GRES configuration (`gpu:1` vs `gpu:8`)
 - SBATCH directives (`--ntasks-per-node`, `--cpus-per-task`)
 - EFA/NCCL environment variables specific to the network topology
 
