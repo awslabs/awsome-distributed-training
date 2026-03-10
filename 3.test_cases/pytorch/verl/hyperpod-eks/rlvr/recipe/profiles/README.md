@@ -23,11 +23,38 @@ The profile is selected by the first method that succeeds:
 
 ## Available Profiles
 
-| Profile | Instance | GPU | VRAM | Status |
-|---------|----------|-----|------|--------|
-| [p5en-48xlarge.env](p5en-48xlarge.env) | p5en.48xlarge | 8x H200 | 80 GB | Tested |
-| [g5-12xlarge.env](g5-12xlarge.env) | g5.12xlarge | 4x A10G | 24 GB | Tested |
-| [p4de-24xlarge.env](p4de-24xlarge.env) | p4de.24xlarge | 8x A100 | 80 GB | Untested |
+| Profile | Instance | GPU | VRAM | Tested Model | Status |
+|---------|----------|-----|------|-------------|--------|
+| [p5en-48xlarge.env](p5en-48xlarge.env) | p5en.48xlarge | 8x H200 | 80 GB | Qwen3-8B (dense) | Tested |
+| [g5-12xlarge.env](g5-12xlarge.env) | g5.12xlarge | 4x A10G | 24 GB | gpt-oss-20b (MoE) | Tested |
+| [p4de-24xlarge.env](p4de-24xlarge.env) | p4de.24xlarge | 8x A100 | 80 GB | — | Untested |
+
+## About Model Assumptions
+
+Each profile is tested with a specific model and documents what to change
+for other model sizes. The instance-dependent settings (NCCL, EFA, GPU
+count) stay the same regardless of model. What changes per model:
+
+| Setting | Driven by... |
+|---------|-------------|
+| `TENSOR_PARALLEL_SIZE` | Model size relative to per-GPU VRAM |
+| `PARAM_OFFLOAD`, `OPTIMIZER_OFFLOAD` | Whether model + optimizer fit in GPU VRAM |
+| `GPU_MEMORY_UTILIZATION` | Model shard size relative to per-GPU VRAM |
+| `LOG_PROB_MICRO_BSZ_PER_GPU` | Activation memory during log-prob computation |
+| `MAX_RESPONSE_LENGTH` | KV cache size (longer = more VRAM) |
+| `SAVE_FREQ`, `MAX_ACTOR_CKPT_TO_KEEP` | Checkpoint size (scales with total params) |
+
+Settings that do NOT change per model (only per instance):
+
+| Setting | Driven by... |
+|---------|-------------|
+| `NCCL_PROTO`, `FI_EFA_USE_DEVICE_RDMA` | Whether instance has GPUDirect RDMA |
+| `NUM_GPU_PER_NODE`, `NUM_EFA_PER_NODE` | Instance hardware |
+| `WORKER_MEMORY`, `WORKER_CPU` | Instance allocatable resources |
+| `ENFORCE_EAGER` | GPU VRAM headroom (always True on 24GB) |
+
+See the `MODEL ASSUMPTIONS` comment block at the top of each `.env` file
+for guidance on adjusting settings for different models.
 
 ## What's in a Profile
 
