@@ -245,6 +245,16 @@ else
         if ! aws cloudformation describe-stacks \
             --stack-name "${CODEBUILD_STACK_NAME}" \
             --region "${AWS_REGION}" &>/dev/null; then
+
+            # Check if ECR repository already exists
+            create_ecr="true"
+            if aws ecr describe-repositories \
+                --repository-names "${REPO_NAME}" \
+                --region "${AWS_REGION}" &>/dev/null; then
+                create_ecr="false"
+                echo "  ECR repository '${REPO_NAME}' already exists (skipping creation)."
+            fi
+
             echo "  Deploying CodeBuild stack (CloudFormation)..."
             aws cloudformation create-stack \
                 --region "${AWS_REGION}" \
@@ -254,6 +264,7 @@ else
                     "ParameterKey=RepositoryName,ParameterValue=${REPO_NAME}" \
                     "ParameterKey=ImageTag,ParameterValue=${IMAGE_TAG}" \
                     "ParameterKey=SourceS3Bucket,ParameterValue=${S3_BUCKET}" \
+                    "ParameterKey=CreateECRRepository,ParameterValue=${create_ecr}" \
                 --capabilities CAPABILITY_NAMED_IAM
 
             echo "  Waiting for CodeBuild stack..."
@@ -339,6 +350,58 @@ fi
 
 SSH_KEY="$(cat ~/.ssh/id_ed25519_slurm.pub)"
 echo "  Public key: ${SSH_KEY}"
+
+###########################
+## Query FSx Filesystem ###
+###########################
+
+echo ""
+echo "Querying FSx for Lustre filesystem..."
+
+# Extract ResourceNamePrefix from params.json to build the expected tag.
+RESOURCE_NAME_PREFIX=$(jq -r \
+    '.[] | select(.ParameterKey == "ResourceNamePrefix") | .ParameterValue' \
+    "${SCRIPT_DIR}/params.json")
+FSX_TAG_NAME="${RESOURCE_NAME_PREFIX}-fsx-lustre"
+
+echo "  Looking for FSx filesystem with Name tag: ${FSX_TAG_NAME}"
+
+FSX_DESCRIBE=$(aws fsx describe-file-systems \
+    --region "${AWS_REGION}" \
+    --query "FileSystems[?Tags[?Key=='Name'&&Value=='${FSX_TAG_NAME}']]" \
+    --output json)
+
+FSX_ID=$(echo "${FSX_DESCRIBE}" | jq -r '.[0].FileSystemId // empty')
+if [[ -z "${FSX_ID}" ]]; then
+    echo "Error: No FSx filesystem found with tag Name=${FSX_TAG_NAME}"
+    echo "  Verify the filesystem exists in region ${AWS_REGION}."
+    exit 1
+fi
+
+FSX_DNS="${FSX_ID}.fsx.${AWS_REGION}.amazonaws.com"
+FSX_MOUNT=$(echo "${FSX_DESCRIBE}" | jq -r '.[0].LustreConfiguration.MountName // empty')
+if [[ -z "${FSX_MOUNT}" ]]; then
+    echo "Error: Could not determine FSx mount name for ${FSX_ID}."
+    exit 1
+fi
+
+echo "  FSx ID: ${FSX_ID}"
+echo "  FSx DNS: ${FSX_DNS}"
+echo "  FSx mount: ${FSX_MOUNT}"
+
+###########################
+## Generate Lustre PVC ####
+###########################
+
+echo ""
+echo "Generating lustre-pvc-slurm.yaml from template..."
+
+sed -e "s|\${fsx_id}|${FSX_ID}|g" \
+    -e "s|\${fsx_dns}|${FSX_DNS}|g" \
+    -e "s|\${fsx_mount}|${FSX_MOUNT}|g" \
+    "${SCRIPT_DIR}/lustre-pvc-slurm.yaml.template" > "${SCRIPT_DIR}/lustre-pvc-slurm.yaml"
+
+echo "  Written to: ${SCRIPT_DIR}/lustre-pvc-slurm.yaml"
 
 ###########################
 ## Generate Values File ###

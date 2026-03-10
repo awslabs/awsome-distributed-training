@@ -73,3 +73,67 @@ load 'helpers/setup'
     assert_success
     assert_output --partial "--region"
 }
+
+###########################
+## version constants ######
+###########################
+
+@test "install.sh: defines CERT_MANAGER_VERSION" {
+    run grep 'CERT_MANAGER_VERSION=' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial '1.19.2'
+}
+
+@test "install.sh: defines LB_CONTROLLER_CHART_VERSION" {
+    run grep 'LB_CONTROLLER_CHART_VERSION=' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial '1.11.0'
+}
+
+@test "install.sh: defines LB_CONTROLLER_IAM_ROLE_NAME" {
+    run grep 'LB_CONTROLLER_IAM_ROLE_NAME=' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'AmazonEKS_LB_Controller_Role_slinky'
+}
+
+@test "install.sh: defines LB_CONTROLLER_IAM_POLICY_NAME" {
+    run grep 'LB_CONTROLLER_IAM_POLICY_NAME=' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'AWSLoadBalancerControllerIAMPolicy_slinky'
+}
+
+###########################
+## install order ##########
+###########################
+
+@test "install.sh: cert-manager is installed before LB Controller" {
+    # Verify the cert-manager section appears before the LB Controller section
+    local cert_line lb_line
+    cert_line=$(grep -n 'Install cert-manager' "${PROJECT_DIR}/install.sh" | head -1 | cut -d: -f1)
+    lb_line=$(grep -n 'Install LB Controller' "${PROJECT_DIR}/install.sh" | head -1 | cut -d: -f1)
+    [[ "${cert_line}" -lt "${lb_line}" ]]
+}
+
+@test "install.sh: LB Controller is installed before MariaDB" {
+    local lb_line mariadb_line
+    lb_line=$(grep -n 'Install LB Controller' "${PROJECT_DIR}/install.sh" | head -1 | cut -d: -f1)
+    mariadb_line=$(grep -n 'Install MariaDB' "${PROJECT_DIR}/install.sh" | head -1 | cut -d: -f1)
+    [[ "${lb_line}" -lt "${mariadb_line}" ]]
+}
+
+@test "install.sh: FSx PVC is applied before MariaDB" {
+    local fsx_line mariadb_line
+    fsx_line=$(grep -n 'Apply FSx PVC' "${PROJECT_DIR}/install.sh" | head -1 | cut -d: -f1)
+    mariadb_line=$(grep -n 'Install MariaDB' "${PROJECT_DIR}/install.sh" | head -1 | cut -d: -f1)
+    [[ "${fsx_line}" -lt "${mariadb_line}" ]]
+}
+
+@test "install.sh: requires EKS_CLUSTER_NAME from env_vars.sh" {
+    run grep 'EKS_CLUSTER_NAME' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: requires VPC_ID from env_vars.sh" {
+    run grep 'VPC_ID' "${PROJECT_DIR}/install.sh"
+    assert_success
+}

@@ -156,7 +156,7 @@ Calls `resolve_helm_profile()` which sets these variables based on
 | `EFA_COUNT` | `1` | `32` |
 | `GPU_GRES` | `gpu:a10g:1` | `gpu:h100:8` |
 | `REPLICAS` | `4` | `2` |
-| `MGMT_INSTANCE_TYPE` | `ml.m5.2xlarge` | `ml.m5.2xlarge` |
+| `MGMT_INSTANCE_TYPE` | `ml.m5.4xlarge` | `ml.m5.4xlarge` |
 | `PVC_NAME` | `fsx-claim` | `fsx-claim` |
 
 Then uses `sed` to substitute 10 template variables in

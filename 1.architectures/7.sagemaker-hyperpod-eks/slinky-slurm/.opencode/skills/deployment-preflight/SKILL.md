@@ -153,7 +153,7 @@ aws ec2 describe-availability-zones \
 # Should point to the HyperPod EKS cluster
 kubectl cluster-info
 kubectl get nodes
-# Expected: Nodes with STATUS Ready, instance types ml.m5.2xlarge, ml.g5.8xlarge or ml.p5.48xlarge
+# Expected: Nodes with STATUS Ready, instance types ml.m5.4xlarge, ml.g5.8xlarge or ml.p5.48xlarge
 ```
 
 ### Step 5: Verify ECR image exists (if using --skip-build)

@@ -65,7 +65,7 @@ load 'helpers/setup'
     assert_equal "${EFA_COUNT}" "1"
     assert_equal "${GPU_GRES}" "gpu:a10g:1"
     assert_equal "${REPLICAS}" "4"
-    assert_equal "${MGMT_INSTANCE_TYPE}" "ml.m5.2xlarge"
+    assert_equal "${MGMT_INSTANCE_TYPE}" "ml.m5.4xlarge"
     assert_equal "${PVC_NAME}" "fsx-claim"
 }
 

@@ -53,7 +53,7 @@ The following was tested in two infrastructure scenarios for hosting the compute
 1. On 4 `ml.g5.8xlarge` instances (1 A10G Tensor Core GPU each)
 2. On 2 `ml.p5.48xlarge` instances (8 H100 Tensor Core GPUs each) with EFAv2
 
-For simplicity, 2 `ml.m5.2xlarge` instances were also allocated for separately hosting other
+For simplicity, 2 `ml.m5.4xlarge` instances were also allocated for separately hosting other
 components like the Controller and Login pods. You can adjust the number and type of instances
 associated with your HyperPod cluster, as well as the component affinity rules in
 `slurm-values.yaml.template` to modify how they are spread across your nodes.
@@ -83,7 +83,7 @@ deploy.sh   →   install.sh   →   (run workloads)   →   destroy.sh
 
 - AWS CLI configured with appropriate permissions
 - `jq` (for CloudFormation) or `terraform` (for Terraform)
-- `kubectl`, `helm`, `eksctl`
+- `kubectl`, `helm`
 - Docker (only if using `--local-build` for container images)
 
 #### <u>Clone the Repository</u>
@@ -125,8 +125,9 @@ Run `./deploy.sh --help` for all available options.
 #### <u>Step 2: Build Image, Install Slurm</u>
 
 `install.sh` orchestrates `setup.sh` (container image build via CodeBuild, SSH key
-generation, Helm values template substitution) followed by MariaDB, Slurm operator,
-and Slurm cluster Helm installations and NLB configuration.
+generation, Helm values template substitution) followed by cert-manager, the AWS Load
+Balancer Controller (with Pod Identity), public subnet tagging, FSx Lustre PV/PVC,
+MariaDB, Slurm operator, and Slurm cluster Helm installations and NLB configuration.
 
 Install with CodeBuild image build (default):
 ```
@@ -158,10 +159,26 @@ kubectl get nodes
 kubectl -n slurm get pods -l app.kubernetes.io/instance=slurm
 ```
 
+Verify cert-manager and the AWS Load Balancer Controller are running:
+```
+kubectl get pods -n cert-manager
+kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+```
+
+> **NOTE:** The EBS CSI driver and a `gp3` StorageClass are prerequisites
+> for persistent volume claims used by MariaDB and Slurm components. If the
+> EBS CSI addon is not installed on your HyperPod cluster, see the
+> [EBS CSI driver documentation](https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-eks-ebs.html)
+> for installation instructions. The HyperPod EBS CSI driver role requires an
+> inline IAM policy with `sagemaker:AttachClusterNodeVolume`,
+> `sagemaker:DetachClusterNodeVolume`, `eks:DescribeCluster`, and standard
+> EC2 volume actions.
+
 #### <u>Clean Up</u>
 
 `destroy.sh` tears down all resources in reverse order (Slurm cluster, operator,
-MariaDB, CodeBuild stack, HyperPod infrastructure):
+MariaDB, FSx PVC, AWS Load Balancer Controller with Pod Identity + IAM, cert-manager,
+CodeBuild stack, HyperPod infrastructure):
 
 ```
 ./destroy.sh --infra cfn
@@ -429,10 +446,16 @@ kubectl get sc openzfs-sc -oyaml
 
 ### Install Slinky Prerequisites:
 
-> **NOTE:** The HyperPod CloudFormation/Terraform stack automatically installs
-> cert-manager, Prometheus, the GPU operator, and the EFA device plugin.
-> These steps are only needed if your stack was deployed without these
-> components enabled.
+> **NOTE:** When using the automated `install.sh` script, cert-manager and
+> the AWS Load Balancer Controller are installed automatically. The manual
+> steps below are only needed for standalone deployments.
+>
+> If your HyperPod stack has inference and training operators enabled
+> (`HelmOperators` with `InferenceOperator` or `TrainingOperator` set to
+> `enabled=true`), cert-manager may already be installed by the stack. In
+> this project's default configuration, inference and training operators are
+> disabled to conserve pod capacity on management nodes, so `install.sh`
+> installs cert-manager and the LB Controller directly.
 
 ```
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -459,6 +482,11 @@ Verify prerequisite installation:
 * * *
 
 ### Install the AWS Load Balancer Controller:
+
+> **NOTE:** The automated `install.sh` script installs the AWS LB Controller
+> using **Pod Identity** (not IRSA/eksctl) and tags public subnets with
+> `kubernetes.io/role/elb=1` automatically. The manual steps below use the
+> older IRSA approach with `eksctl` and are provided as a reference only.
 
 Following the instructions below, which are a consolidation of the full
 [Install with Helm](https://docs.aws.amazon.com/eks/latest/userguide/lbc-helm.html)
@@ -625,13 +653,18 @@ NLB security group on the target port (22 in this case).
 
 #### Create an FSx for Lustre Persistent Volume Claim (PVC) in the slurm namespace:
 
+> **NOTE:** The automated `install.sh` script generates
+> `lustre-pvc-slurm.yaml` from `lustre-pvc-slurm.yaml.template` (by
+> querying the FSx filesystem created by the HyperPod CFN stack) and applies
+> it automatically. The manual steps below use the pre-generated file.
+
 Create the slurm namespace (if not already created):
 
 ```
 kubectl create ns slurm
 ```
 
-Create a PVC named `fsx-claim` in the slurm namespace:
+Apply the FSx Lustre PV/PVC:
 
 ```
 kubectl apply -f lustre-pvc-slurm.yaml
@@ -978,7 +1011,8 @@ The deployment scripts and their helper library `lib/deploy_helpers.sh` are
 tested using [bats-core](https://github.com/bats-core/bats-core). The test
 suite covers argument parsing, node profile resolution, Helm profile
 resolution, AZ validation, CloudFormation parameter substitution (jq),
-Terraform variable overrides (sed/awk), and template variable substitution.
+Terraform variable overrides (sed/awk), template variable substitution,
+install.sh phases and flag validation, and destroy.sh teardown ordering.
 
 ```
 # One-time setup: install bats-core
@@ -989,6 +1023,9 @@ npm install -g bats               # cross-platform
 # One-time setup: install bats helper libraries
 bash tests/install_bats_libs.sh
 
-# Run all tests (45 tests)
+# Run all tests (89 tests across 4 test files)
+bats tests/
+
+# Run a specific test file
 bats tests/test_deploy.bats
 ```

@@ -10,26 +10,26 @@ version: 0.2
 #   REPO_NAME         - ECR repository name (default: dlc-slurmd)
 #   IMAGE_TAG         - Image tag (default: 25.11.1-ubuntu24.04)
 
+env:
+  exported-variables:
+    - IMAGE_URI
+
 phases:
   pre_build:
     commands:
-      - echo "Authenticating to DLC ECR registry..."
-      - aws ecr get-login-password --region us-east-1 |
-          docker login --username AWS
-          --password-stdin 763104351884.dkr.ecr.us-east-1.amazonaws.com
-      - echo "Authenticating to project ECR registry..."
-      - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} |
-          docker login --username AWS
-          --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
-      - IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${REPO_NAME}:${IMAGE_TAG}"
-      - echo "Will build and push ${IMAGE_URI}"
+      - "echo Authenticating to DLC ECR registry..."
+      - "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 763104351884.dkr.ecr.us-east-1.amazonaws.com"
+      - "echo Authenticating to project ECR registry..."
+      - "aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+      - "export IMAGE_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$REPO_NAME:$IMAGE_TAG"
+      - "echo Will build and push $IMAGE_URI"
   build:
     commands:
-      - echo "Building container image..."
-      - docker build -t ${REPO_NAME}:${IMAGE_TAG} -f dlc-slurmd.Dockerfile .
-      - docker tag ${REPO_NAME}:${IMAGE_TAG} ${IMAGE_URI}
+      - "echo Building container image..."
+      - "docker build -t $REPO_NAME:$IMAGE_TAG -f dlc-slurmd.Dockerfile ."
+      - "docker tag $REPO_NAME:$IMAGE_TAG $IMAGE_URI"
   post_build:
     commands:
-      - echo "Pushing image to ECR..."
-      - docker push ${IMAGE_URI}
-      - echo "Build completed: ${IMAGE_URI}"
+      - "echo Pushing image to ECR..."
+      - "docker push $IMAGE_URI"
+      - "echo Build completed: $IMAGE_URI"

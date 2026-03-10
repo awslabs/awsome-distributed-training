@@ -43,7 +43,7 @@ resolve_node_profile() {
 resolve_helm_profile() {
     local node_type="$1"
 
-    MGMT_INSTANCE_TYPE="ml.m5.2xlarge"
+    MGMT_INSTANCE_TYPE="ml.m5.4xlarge"
     PVC_NAME="fsx-claim"
 
     case "${node_type}" in

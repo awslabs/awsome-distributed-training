@@ -14,10 +14,10 @@ spec:
     namespace: slurm
   csi:
     driver: fsx.csi.aws.com
-    volumeHandle: fs-0d6021c47f5a69026
+    volumeHandle: ${fsx_id}
     volumeAttributes:
-      dnsname: fs-0d6021c47f5a69026.fsx.us-west-2.amazonaws.com
-      mountname: vm4lxb4v
+      dnsname: ${fsx_dns}
+      mountname: ${fsx_mount}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

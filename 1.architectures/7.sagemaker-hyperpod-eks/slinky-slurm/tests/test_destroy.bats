@@ -54,3 +54,69 @@ load 'helpers/setup'
     assert_success
     assert_output --partial "Aborted"
 }
+
+###########################
+## teardown order #########
+###########################
+
+@test "destroy.sh: LB Controller uninstall comes after namespace deletion" {
+    local ns_line lb_line
+    ns_line=$(grep -n 'Delete Namespaces' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    lb_line=$(grep -n 'Uninstall LB Controller' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    [[ "${ns_line}" -lt "${lb_line}" ]]
+}
+
+@test "destroy.sh: cert-manager uninstall comes after LB Controller" {
+    local lb_line cert_line
+    lb_line=$(grep -n 'Uninstall LB Controller' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    cert_line=$(grep -n 'Uninstall cert-manager' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    [[ "${lb_line}" -lt "${cert_line}" ]]
+}
+
+@test "destroy.sh: cert-manager uninstall comes before CodeBuild stack" {
+    local cert_line cb_line
+    cert_line=$(grep -n 'Uninstall cert-manager' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    cb_line=$(grep -n 'Delete CodeBuild Stack' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    [[ "${cert_line}" -lt "${cb_line}" ]]
+}
+
+###########################
+## local keyword fix ######
+###########################
+
+@test "destroy.sh: no local keyword outside functions" {
+    # The 'local' keyword must only appear inside function bodies.
+    # destroy.sh has no functions, so 'local' should not appear at all.
+    run grep -n '^\s*local ' "${PROJECT_DIR}/destroy.sh"
+    assert_failure
+}
+
+###########################
+## IAM role/policy names ##
+###########################
+
+@test "destroy.sh: defines LB_CONTROLLER_IAM_ROLE_NAME" {
+    run grep 'LB_CONTROLLER_IAM_ROLE_NAME=' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+    assert_output --partial 'AmazonEKS_LB_Controller_Role_slinky'
+}
+
+@test "destroy.sh: defines LB_CONTROLLER_IAM_POLICY_NAME" {
+    run grep 'LB_CONTROLLER_IAM_POLICY_NAME=' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+    assert_output --partial 'AWSLoadBalancerControllerIAMPolicy_slinky'
+}
+
+###########################
+## cleanup files ##########
+###########################
+
+@test "destroy.sh: cleans up lustre-pvc-slurm.yaml" {
+    run grep 'lustre-pvc-slurm.yaml' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+}
+
+@test "destroy.sh: deletes FSx PVC during teardown" {
+    run grep 'Delete FSx PVC' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+}

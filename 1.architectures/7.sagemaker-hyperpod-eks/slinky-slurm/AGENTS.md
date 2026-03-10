@@ -15,8 +15,10 @@ parameters, Slurm batch scripts, deployment automation scripts, and documentatio
 Key automation scripts:
 - **`deploy.sh`** — Infrastructure deployment via CloudFormation or Terraform
 - **`setup.sh`** — Container image build (CodeBuild/local), SSH keys, Helm values generation
-- **`install.sh`** — MariaDB, Slurm operator, Slurm cluster Helm installs, NLB config
-- **`destroy.sh`** — Reverse teardown of all deployed resources
+- **`install.sh`** — cert-manager, AWS LB Controller (Pod Identity), subnet tagging,
+  FSx PVC, MariaDB, Slurm operator, Slurm cluster Helm installs, NLB config
+- **`destroy.sh`** — Reverse teardown of all deployed resources (including LB Controller
+  Pod Identity + IAM, cert-manager, and FSx PVC)
 - **`lib/deploy_helpers.sh`** — Extracted testable functions sourced by `deploy.sh` and `setup.sh`
 - **`params.json`** — CloudFormation parameters (40 params, g5 defaults)
 - **`custom.tfvars`** — Terraform variables (g5 defaults)
@@ -99,6 +101,12 @@ bats --verbose-run tests/test_deploy.bats
 
 Test structure:
 - `tests/test_deploy.bats` — 45 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
+- `tests/test_setup.bats` — 12 unit tests for `setup.sh` argument parsing, profile
+  resolution, and template substitution
+- `tests/test_install.bats` — 10 unit tests for `install.sh` argument parsing, version
+  constants, install order, and `env_vars.sh` dependency validation
+- `tests/test_destroy.bats` — 7 unit tests for `destroy.sh` argument parsing, teardown
+  order, and IAM cleanup
 - `tests/fixtures/` — Independent copies of `params.json`, `custom.tfvars`, and
   `slurm-values.yaml.template` for test isolation
 - `tests/helpers/setup.bash` — Common bats setup/teardown (loads helpers, creates temp dir,

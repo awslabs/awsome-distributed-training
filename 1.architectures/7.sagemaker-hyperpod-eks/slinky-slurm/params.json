@@ -33,7 +33,7 @@
   },
   {
     "ParameterKey": "InstanceGroupSettings1",
-    "ParameterValue": "[{\"InstanceCount\":4,\"InstanceGroupName\":\"accelerated-instance-group-1\",\"InstanceType\":\"ml.g5.8xlarge\",\"TargetAvailabilityZoneId\":\"usw2-az2\",\"ThreadsPerCore\":1,\"InstanceStorageConfigs\":[{\"EbsVolumeConfig\":{\"VolumeSizeInGB\":500}}]},{\"InstanceCount\":2,\"InstanceGroupName\":\"general-instance-group-2\",\"InstanceType\":\"ml.m5.2xlarge\",\"TargetAvailabilityZoneId\":\"usw2-az2\",\"ThreadsPerCore\":1,\"InstanceStorageConfigs\":[{\"EbsVolumeConfig\":{\"VolumeSizeInGB\":500}}]}]"
+    "ParameterValue": "[{\"InstanceCount\":4,\"InstanceGroupName\":\"accelerated-instance-group-1\",\"InstanceType\":\"ml.g5.8xlarge\",\"TargetAvailabilityZoneId\":\"usw2-az2\",\"ThreadsPerCore\":1,\"InstanceStorageConfigs\":[{\"EbsVolumeConfig\":{\"VolumeSizeInGB\":500}}]},{\"InstanceCount\":2,\"InstanceGroupName\":\"general-instance-group-2\",\"InstanceType\":\"ml.m5.4xlarge\",\"TargetAvailabilityZoneId\":\"usw2-az2\",\"ThreadsPerCore\":1,\"InstanceStorageConfigs\":[{\"EbsVolumeConfig\":{\"VolumeSizeInGB\":500}}]}]"
   },
   {
     "ParameterKey": "EnableObservabilityFeature",
@@ -93,7 +93,7 @@
   },
   {
     "ParameterKey": "CreateTaskGovernanceClusterPolicyStack",
-    "ParameterValue": "true"
+    "ParameterValue": "false"
   },
   {
     "ParameterKey": "PriorityClasses",
@@ -105,11 +105,11 @@
   },
   {
     "ParameterKey": "EnableHPInferenceFeature",
-    "ParameterValue": "true"
+    "ParameterValue": "false"
   },
   {
     "ParameterKey": "EnableHPInferenceAddonFeature",
-    "ParameterValue": "true"
+    "ParameterValue": "false"
   },
   {
     "ParameterKey": "VpcCIDR",
@@ -129,7 +129,7 @@
   },
   {
     "ParameterKey": "EnableHPTrainingOperatorFeature",
-    "ParameterValue": "true"
+    "ParameterValue": "false"
   },
   {
     "ParameterKey": "CreateFsxStack",

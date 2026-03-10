@@ -13,6 +13,8 @@ INFRA=""
 STACK_NAME="hp-eks-slinky-stack"
 CODEBUILD_STACK_NAME="slurmd-codebuild-stack"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LB_CONTROLLER_IAM_ROLE_NAME="AmazonEKS_LB_Controller_Role_slinky"
+LB_CONTROLLER_IAM_POLICY_NAME="AWSLoadBalancerControllerIAMPolicy_slinky"
 
 ###########################
 ###### Usage Function #####
@@ -104,6 +106,16 @@ if [[ ! "${response}" =~ ^[Yy]$ ]]; then
 fi
 
 ###########################
+## Source env_vars.sh #####
+###########################
+
+if [[ -f "${SCRIPT_DIR}/env_vars.sh" ]]; then
+    source "${SCRIPT_DIR}/env_vars.sh"
+fi
+
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+
+###########################
 ## Uninstall Slurm ########
 ###########################
 
@@ -126,6 +138,14 @@ echo "Uninstalling MariaDB operator..."
 helm uninstall mariadb-operator -n mariadb 2>/dev/null || echo "  MariaDB operator not found (already removed)."
 
 ###########################
+## Delete FSx PVC #########
+###########################
+
+echo ""
+echo "Deleting FSx Lustre PV/PVC..."
+kubectl delete -f "${SCRIPT_DIR}/lustre-pvc-slurm.yaml" 2>/dev/null || echo "  FSx PV/PVC not found."
+
+###########################
 ## Delete Namespaces ######
 ###########################
 
@@ -134,6 +154,90 @@ echo "Deleting namespaces..."
 kubectl delete namespace slurm 2>/dev/null || echo "  Namespace slurm not found."
 kubectl delete namespace slinky 2>/dev/null || echo "  Namespace slinky not found."
 kubectl delete namespace mariadb 2>/dev/null || echo "  Namespace mariadb not found."
+
+###########################
+## Untag Public Subnets ###
+###########################
+
+echo ""
+echo "Removing LB Controller subnet tags..."
+if [[ -n "${VPC_ID:-}" ]]; then
+    PUBLIC_SUBNET_IDS=$(aws ec2 describe-subnets \
+        --filters "Name=vpc-id,Values=${VPC_ID}" \
+                  "Name=map-public-ip-on-launch,Values=true" \
+        --query "Subnets[].SubnetId" --output text \
+        --region "${AWS_REGION}" 2>/dev/null || echo "")
+
+    if [[ -n "${PUBLIC_SUBNET_IDS}" ]]; then
+        for SUBNET_ID in ${PUBLIC_SUBNET_IDS}; do
+            aws ec2 delete-tags \
+                --resources "${SUBNET_ID}" \
+                --tags "Key=kubernetes.io/role/elb" \
+                --region "${AWS_REGION}" 2>/dev/null || true
+            echo "  Untagged ${SUBNET_ID}"
+        done
+    fi
+else
+    echo "  VPC_ID not set, skipping subnet untag."
+fi
+
+###########################
+## Uninstall LB Controller
+###########################
+
+echo ""
+echo "Uninstalling AWS Load Balancer Controller..."
+helm uninstall aws-load-balancer-controller -n kube-system 2>/dev/null || \
+    echo "  LB Controller not found (already removed)."
+
+# Delete Pod Identity association
+if [[ -n "${EKS_CLUSTER_NAME:-}" ]]; then
+    ASSOC_ID=$(aws eks list-pod-identity-associations \
+        --cluster-name "${EKS_CLUSTER_NAME}" \
+        --namespace "kube-system" \
+        --service-account "aws-load-balancer-controller" \
+        --region "${AWS_REGION}" \
+        --query "associations[0].associationId" --output text 2>/dev/null || echo "None")
+
+    if [[ "${ASSOC_ID}" != "None" && -n "${ASSOC_ID}" ]]; then
+        echo "  Deleting Pod Identity association ${ASSOC_ID}..."
+        aws eks delete-pod-identity-association \
+            --cluster-name "${EKS_CLUSTER_NAME}" \
+            --association-id "${ASSOC_ID}" \
+            --region "${AWS_REGION}" \
+            --no-cli-pager 2>/dev/null || true
+    fi
+fi
+
+# Delete IAM role and policy
+if aws iam get-role --role-name "${LB_CONTROLLER_IAM_ROLE_NAME}" &>/dev/null; then
+    echo "  Detaching policy from role ${LB_CONTROLLER_IAM_ROLE_NAME}..."
+    LB_POLICY_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:policy/${LB_CONTROLLER_IAM_POLICY_NAME}"
+    aws iam detach-role-policy \
+        --role-name "${LB_CONTROLLER_IAM_ROLE_NAME}" \
+        --policy-arn "${LB_POLICY_ARN}" 2>/dev/null || true
+    echo "  Deleting IAM role ${LB_CONTROLLER_IAM_ROLE_NAME}..."
+    aws iam delete-role \
+        --role-name "${LB_CONTROLLER_IAM_ROLE_NAME}" 2>/dev/null || true
+fi
+
+if [[ -n "${AWS_ACCOUNT_ID}" ]]; then
+    LB_POLICY_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:policy/${LB_CONTROLLER_IAM_POLICY_NAME}"
+    if aws iam get-policy --policy-arn "${LB_POLICY_ARN}" &>/dev/null; then
+        echo "  Deleting IAM policy ${LB_CONTROLLER_IAM_POLICY_NAME}..."
+        aws iam delete-policy --policy-arn "${LB_POLICY_ARN}" 2>/dev/null || true
+    fi
+fi
+
+###########################
+## Uninstall cert-manager #
+###########################
+
+echo ""
+echo "Uninstalling cert-manager..."
+helm uninstall cert-manager -n cert-manager 2>/dev/null || \
+    echo "  cert-manager not found (already removed)."
+kubectl delete namespace cert-manager 2>/dev/null || echo "  Namespace cert-manager not found."
 
 ###########################
 ## Delete CodeBuild Stack #
@@ -158,7 +262,7 @@ if [[ "${INFRA}" == "cfn" ]]; then
         echo "  CodeBuild stack not found (already removed)."
     fi
 else
-    local cb_dir="${SCRIPT_DIR}/codebuild-tf"
+    cb_dir="${SCRIPT_DIR}/codebuild-tf"
     if [[ -d "${cb_dir}" ]] && [[ -f "${cb_dir}/terraform.tfstate" ]]; then
         echo "  Destroying CodeBuild Terraform resources..."
         terraform -chdir="${cb_dir}" destroy -auto-approve
@@ -192,7 +296,7 @@ if [[ "${INFRA}" == "cfn" ]]; then
         echo "  Stack '${STACK_NAME}' not found (already removed)."
     fi
 else
-    local tf_dir="${SCRIPT_DIR}/../terraform-modules/hyperpod-eks-tf"
+    tf_dir="${SCRIPT_DIR}/../terraform-modules/hyperpod-eks-tf"
     if [[ -d "${tf_dir}" ]]; then
         echo "  Destroying Terraform infrastructure..."
         terraform -chdir="${tf_dir}" plan -destroy -var-file="custom.tfvars"
@@ -217,6 +321,7 @@ echo ""
 echo "Cleaning up local generated files..."
 rm -f "${SCRIPT_DIR}/slurm-values.yaml"
 rm -f "${SCRIPT_DIR}/slurm-login-service-patch.yaml"
+rm -f "${SCRIPT_DIR}/lustre-pvc-slurm.yaml"
 rm -f "${SCRIPT_DIR}/env_vars.sh"
 echo "  Cleaned up."
 

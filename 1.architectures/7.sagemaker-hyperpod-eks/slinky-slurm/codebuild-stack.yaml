@@ -22,10 +22,23 @@ Parameters:
     Type: String
     Default: codebuild/slurmd-build-context.zip
     Description: S3 key for the build context zip archive.
+  CreateECRRepository:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Set to true to create the ECR repository. Set to false if the
+      repository already exists.
+
+Conditions:
+  ShouldCreateECR: !Equals [!Ref CreateECRRepository, "true"]
 
 Resources:
   ECRRepository:
     Type: AWS::ECR::Repository
+    Condition: ShouldCreateECR
     Properties:
       RepositoryName: !Ref RepositoryName
       ImageScanningConfiguration:
@@ -79,7 +92,7 @@ Resources:
                   - ecr:InitiateLayerUpload
                   - ecr:UploadLayerPart
                   - ecr:CompleteLayerUpload
-                Resource: !GetAtt ECRRepository.Arn
+                Resource: !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RepositoryName}"
               # Pull DLC base image from public AWS ECR
               - Effect: Allow
                 Action:
@@ -131,7 +144,7 @@ Resources:
 Outputs:
   ECRRepositoryUri:
     Description: ECR repository URI for the slurmd container image.
-    Value: !GetAtt ECRRepository.RepositoryUri
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${RepositoryName}"
   CodeBuildProjectName:
     Description: CodeBuild project name for triggering builds.
     Value: !Ref CodeBuildProject

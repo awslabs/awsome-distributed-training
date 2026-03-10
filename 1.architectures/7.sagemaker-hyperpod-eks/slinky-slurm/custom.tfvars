@@ -17,7 +17,7 @@ instance_groups = [
   },
   {
     name                      = "general-instance-group-2"
-    instance_type             = "ml.m5.2xlarge",
+    instance_type             = "ml.m5.4xlarge",
     instance_count            = 2,
     availability_zone_id      = "usw2-az2",
     ebs_volume_size_in_gb     = 500,
@@ -31,7 +31,7 @@ create_observability_module               = true
 network_metric_level                      = "ADVANCED"
 logging_enabled                           = true
 create_task_governance_module             = true
-create_hyperpod_training_operator_module  = true
-create_hyperpod_inference_operator_module = true
+create_hyperpod_training_operator_module  = false
+create_hyperpod_inference_operator_module = false
 enable_guardduty_cleanup                  = true
 create_new_fsx_filesystem                 = true

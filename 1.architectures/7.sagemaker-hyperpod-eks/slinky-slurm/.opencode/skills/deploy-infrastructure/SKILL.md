@@ -105,7 +105,7 @@ kubectl get nodes
 ```
 
 Expected output: nodes with instance types matching the chosen profile
-(`ml.m5.2xlarge` for management, `ml.g5.8xlarge` or `ml.p5.48xlarge` for
+(`ml.m5.4xlarge` for management, `ml.g5.8xlarge` or `ml.p5.48xlarge` for
 accelerated).
 
 ## What deploy.sh Does Internally

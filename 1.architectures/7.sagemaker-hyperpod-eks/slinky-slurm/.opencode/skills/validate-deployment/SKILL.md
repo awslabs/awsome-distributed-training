@@ -24,9 +24,15 @@ workload execution.
 
 ### Step 1: Verify Kubernetes Pod Health
 
-Check that all pods in the three namespaces are Running and Ready:
+Check that all pods in the key namespaces are Running and Ready:
 
 ```bash
+echo "=== cert-manager namespace ==="
+kubectl -n cert-manager get pods -o wide
+
+echo "=== kube-system (LB Controller) ==="
+kubectl -n kube-system get pods -l app.kubernetes.io/name=aws-load-balancer-controller -o wide
+
 echo "=== slurm namespace ==="
 kubectl -n slurm get pods -o wide
 
@@ -41,6 +47,8 @@ kubectl -n mariadb get pods -o wide
 
 | Namespace | Key Pods | Status |
 |-----------|----------|--------|
+| `cert-manager` | `cert-manager-*`, `cert-manager-webhook-*`, `cert-manager-cainjector-*` | Running |
+| `kube-system` | `aws-load-balancer-controller-*` (x2) | Running |
 | `slurm` | `slurm-controller-*`, `slurm-slurmd-slinky-*` (x replicas), `slurm-login-slinky-*`, `slurm-restapi-*`, `slurm-accounting-*` | Running |
 | `slinky` | `slurm-operator-*` | Running |
 | `mariadb` | `mariadb-operator-*`, `mariadb-*` | Running |
@@ -68,7 +76,7 @@ kubectl get nodes -o wide
 ```
 
 **Expected:**
-- Management nodes: `ml.m5.2xlarge`, STATUS=Ready
+- Management nodes: `ml.m5.4xlarge`, STATUS=Ready
 - Accelerated nodes: `ml.g5.8xlarge` (g5) or `ml.p5.48xlarge` (p5),
   STATUS=Ready
 
@@ -191,6 +199,15 @@ check:
 
 ```bash
 #!/bin/bash
+echo "=== cert-manager ==="
+kubectl -n cert-manager get pods --no-headers | awk '{print $1, $3}'
+
+echo ""
+echo "=== LB Controller ==="
+kubectl -n kube-system get pods -l app.kubernetes.io/name=aws-load-balancer-controller \
+    --no-headers | awk '{print $1, $3}'
+
+echo ""
 echo "=== Pod Status ==="
 kubectl -n slurm get pods -o custom-columns=\
 'NAME:.metadata.name,STATUS:.status.phase,READY:.status.conditions[?(@.type=="Ready")].status'

@@ -7,6 +7,7 @@ new-values.yaml
 # Generated files (produced by setup.sh / install.sh)
 slurm-values.yaml
 slurm-login-service-patch.yaml
+lustre-pvc-slurm.yaml
 env_vars.sh
 codebuild-tf/
 

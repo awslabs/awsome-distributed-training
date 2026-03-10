@@ -207,7 +207,9 @@ deploy_cfn() {
 
     # Write resolved params to a temp file
     local resolved_file
-    resolved_file=$(mktemp /tmp/resolved-params-XXXXXX.json)
+    resolved_file=$(mktemp /tmp/resolved-params-XXXXXXXX)
+    mv "${resolved_file}" "${resolved_file}.json"
+    resolved_file="${resolved_file}.json"
     echo "${resolved_params}" > "${resolved_file}"
 
     echo "  Resolved params written to: ${resolved_file}"
