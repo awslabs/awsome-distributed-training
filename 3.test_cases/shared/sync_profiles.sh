@@ -25,6 +25,9 @@ TARGETS=(
     "${SCRIPT_DIR}/../pytorch/torchtitan/profiles/_detect.sh"
     "${SCRIPT_DIR}/../pytorch/nanoVLM/profiles/_detect.sh"
     "${SCRIPT_DIR}/../pytorch/trl/profiles/_detect.sh"
+    "${SCRIPT_DIR}/../megatron/megatron-lm/profiles/_detect.sh"
+    "${SCRIPT_DIR}/../megatron/bionemo/profiles/_detect.sh"
+    "${SCRIPT_DIR}/../pytorch/deepspeed/examples_megatron_deepspeed/profiles/_detect.sh"
 )
 
 SYNCED=0

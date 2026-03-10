@@ -13,26 +13,55 @@ set -euxo pipefail
 : "${CONTAINER_MOUNT:=$FSX_PATH:$FSX_PATH}"
 : "${HF_LLAMA_PATH:=/fsx/deepspeed/Llama2-7b-hf}"
 
+###########################
+###### Instance Profile ###
+###########################
+# Auto-detect instance type and source the matching profile.
+# Profiles set: NUM_GPUS_PER_NODE, TP, PP, MICRO_BATCH_SIZE,
+#               GLOBAL_BATCH_SIZE, EFA/NCCL vars.
+# Override with: export INSTANCE_PROFILE=g5-12xlarge (before sbatch)
+# See ../profiles/README.md for details.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILES_DIR="${SCRIPT_DIR}/../profiles"
+PROFILE_LOADED=0
+
+if [[ -d "$PROFILES_DIR" ]]; then
+    if PROFILE_ENV=$("${PROFILES_DIR}/_detect.sh" "${PROFILES_DIR}"); then
+        echo "Sourcing instance profile: $PROFILE_ENV"
+        source "$PROFILE_ENV"
+        PROFILE_LOADED=1
+    else
+        echo "WARNING: Profile detection failed. Using defaults (8 GPU, p4de-style)."
+    fi
+else
+    echo "WARNING: No profiles/ directory found. Using defaults (8 GPU, p4de-style)."
+fi
+
 export NODES=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
 export NODES_ARRAY=($NODES)
 export HEAD_NODE=${NODES_ARRAY[0]}
 export MASTER_ADDR=$(hostname --ip-address)
 export MASTER_PORT=$((RANDOM + 10000))
 export NNODES=$SLURM_JOB_NUM_NODES
-export NUM_GPUS_PER_NODE=8
-## EFA settings
-export FI_LOG_LEVEL=1
-export FI_PROVIDER=efa # change to eth if you want to use ENA for comparisons
-export FI_EFA_USE_HUGE_PAGE=0
-# https://discuss.pytorch.org/t/nccl-network-is-unreachable-connection-refused-when-initializing-ddp/137352
-# https://github.com/pytorch/pytorch/issues/68893
-export NCCL_SOCKET_IFNAME=en
-export NCCL_ASYNC_ERROR_HANDLING=1
-export OMPI_MCA_plm=^slurm 
-export MICRO_BATCH_SIZE=16
-export GLOBAL_BATCH_SIZE=256
-export TP=4
-export PP=2
+
+# Fallback defaults when no profile is loaded (assumes P4de-class instance)
+export NUM_GPUS_PER_NODE=${NUM_GPUS_PER_NODE:-8}
+
+## EFA settings — configured by profile or defaults
+if [[ "$PROFILE_LOADED" != "1" ]]; then
+    export FI_LOG_LEVEL=1
+    export FI_PROVIDER=efa # change to eth if you want to use ENA for comparisons
+    export FI_EFA_USE_HUGE_PAGE=0
+    export NCCL_SOCKET_IFNAME=en
+    export NCCL_ASYNC_ERROR_HANDLING=1
+fi
+
+export OMPI_MCA_plm=^slurm
+export MICRO_BATCH_SIZE=${MICRO_BATCH_SIZE:-16}
+export GLOBAL_BATCH_SIZE=${GLOBAL_BATCH_SIZE:-256}
+export TP=${TP:-4}
+export PP=${PP:-2}
 # require to align with weight dimensions
 export HIDDEN_SIZE=4096
 export FFN_HIDDEN_SIZE=11008

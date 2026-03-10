@@ -5,7 +5,37 @@
 #SBATCH --exclusive                   # exclusive node access
 #SBATCH --output slurm-esm1nv-train-%j.out
 
-export FI_EFA_USE_HUGE_PAGE=0
+###########################
+###### Instance Profile ###
+###########################
+# Auto-detect instance type and source the matching profile.
+# Profiles set: GPUS_PER_NODE, MICRO_BATCH_SIZE, EFA/NCCL vars.
+# Override with: export INSTANCE_PROFILE=g5-12xlarge (before sbatch)
+# See profiles/README.md for details.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILES_DIR="${SCRIPT_DIR}/profiles"
+PROFILE_LOADED=0
+
+if [[ -d "$PROFILES_DIR" ]]; then
+    if PROFILE_ENV=$("${PROFILES_DIR}/_detect.sh" "${PROFILES_DIR}"); then
+        echo "Sourcing instance profile: $PROFILE_ENV"
+        source "$PROFILE_ENV"
+        PROFILE_LOADED=1
+    else
+        echo "WARNING: Profile detection failed. Using defaults (8 GPU, p4de-style)."
+    fi
+else
+    echo "WARNING: No profiles/ directory found. Using defaults (8 GPU, p4de-style)."
+fi
+
+# Fallback defaults when no profile is loaded (assumes P4de-class instance)
+GPUS_PER_NODE=${GPUS_PER_NODE:-8}
+
+# EFA — configured by profile or legacy default
+if [[ "$PROFILE_LOADED" != "1" ]]; then
+    export FI_EFA_USE_HUGE_PAGE=0
+fi
 
 
 ###########################
@@ -26,7 +56,7 @@ declare -a ARGS=(
 
 # Training parameters
 # =========================
-MICRO_BATCH_SIZE=256 # micro batch size per GPU, for best efficiency should be set to occupy ~85% of GPU memory. Suggested value for A100 80GB is 256
+MICRO_BATCH_SIZE=${MICRO_BATCH_SIZE:-256} # micro batch size per GPU, for best efficiency should be set to occupy ~85% of GPU memory. Suggested value for A100 80GB is 256
 ACCUMULATE_GRAD_BATCHES=1 # gradient accumulation
 TENSOR_MODEL_PARALLEL_SIZE=1 # tensor model parallel size
 VAL_CHECK_INTERVAL=500 # how often validation step is performed, including downstream task validation

@@ -36,3 +36,6 @@ bash 3.test_cases/shared/sync_profiles.sh
 | [torchtitan](../pytorch/torchtitan/) | `pytorch/torchtitan/profiles/` |
 | [nanoVLM](../pytorch/nanoVLM/) | `pytorch/nanoVLM/profiles/` |
 | [TRL](../pytorch/trl/) | `pytorch/trl/profiles/` |
+| [Megatron-LM](../megatron/megatron-lm/) | `megatron/megatron-lm/profiles/` |
+| [BioNeMo](../megatron/bionemo/) | `megatron/bionemo/profiles/` |
+| [Megatron-DeepSpeed](../pytorch/deepspeed/examples_megatron_deepspeed/) | `pytorch/deepspeed/examples_megatron_deepspeed/profiles/` |

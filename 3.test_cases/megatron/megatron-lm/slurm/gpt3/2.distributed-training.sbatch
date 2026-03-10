@@ -11,10 +11,40 @@
 set -ex;
 
 ###########################
+###### Instance Profile ###
+###########################
+# Auto-detect instance type and source the matching profile.
+# Profiles set: GPUS_PER_NODE, TENSOR_PARALLEL, PIPELINE_PARALLEL,
+#               MICRO_BATCH_SIZE, EFA vars, NCCL settings.
+# Override with: export INSTANCE_PROFILE=g5-12xlarge (before sbatch)
+# See profiles/README.md for details.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILES_DIR="${SCRIPT_DIR}/../../profiles"
+PROFILE_LOADED=0
+
+if [[ -d "$PROFILES_DIR" ]]; then
+    if PROFILE_ENV=$("${PROFILES_DIR}/_detect.sh" "${PROFILES_DIR}"); then
+        echo "Sourcing instance profile: $PROFILE_ENV"
+        source "$PROFILE_ENV"
+        PROFILE_LOADED=1
+    else
+        echo "WARNING: Profile detection failed. Using defaults (8 GPU, p4de-style)."
+    fi
+else
+    echo "WARNING: No profiles/ directory found. Using defaults (8 GPU, p4de-style)."
+fi
+
+# Fallback defaults when no profile is loaded (assumes P4de-class instance)
+GPUS_PER_NODE=${GPUS_PER_NODE:-8}
+
+###########################
 ###### User Variables #####
 ###########################
 
-# configure TP/PP/GBS based on node count
+NODES=${SLURM_JOB_NUM_NODES:-2}
+
+# configure TP/PP/GBS based on node count and GPU count
 if [ $NODES -le 4 ]; then
     : "${TENSOR_PARALLEL:=4}"
     : "${PIPELINE_PARALLEL:=2}"
@@ -22,7 +52,7 @@ if [ $NODES -le 4 ]; then
 elif [ $NODES -ge 8 ]; then
     : "${TENSOR_PARALLEL:=8}"
     : "${PIPELINE_PARALLEL:=4}"
-    TOTAL_GPUS=$((NODES * 8))
+    TOTAL_GPUS=$((NODES * GPUS_PER_NODE))
     DATA_PARALLEL=$((TOTAL_GPUS / (TENSOR_PARALLEL * PIPELINE_PARALLEL)))
     : "${GLOBAL_BATCH_SIZE:=$((DATA_PARALLEL * 576))}"
 fi
@@ -47,11 +77,21 @@ fi
 ## Environment Variables ##
 ###########################
 
+# EFA networking — configured by profile or defaults.
+if [[ "$PROFILE_LOADED" == "1" ]]; then
+    # Profile was sourced — trust its EFA/NCCL settings.
+    true
+else
+    # No profile — use legacy defaults (P4de)
+    export FI_PROVIDER=efa
+    export FI_EFA_USE_HUGE_PAGE=0
+fi
+
 # https://discuss.pytorch.org/t/nccl-network-is-unreachable-connection-refused-when-initializing-ddp/137352
 # https://github.com/pytorch/pytorch/issues/68893
-#export NCCL_SOCKET_IFNAME=ens
 export NCCL_ASYNC_ERROR_HANDLING=1
-export NCCL_DEBUG=INFO
+export NCCL_DEBUG=${NCCL_DEBUG:-INFO}
+export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-"^docker,lo,veth"}
 
 # async runtime error ...
 export CUDA_DEVICE_MAX_CONNECTIONS=1
@@ -66,8 +106,7 @@ declare -a ARGS=(
 )
 
 declare -a TORCHRUN_ARGS=(
-    # change this to match the number of gpus per node:
-    --nproc_per_node=8
+    --nproc_per_node=$GPUS_PER_NODE
     --nnodes=$SLURM_JOB_NUM_NODES
     --rdzv_id=$SLURM_JOB_ID
     --rdzv_backend=c10d
