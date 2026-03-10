@@ -42,7 +42,11 @@ fi
 
 log "Mapping directory contents: $(ls "$JOB_ID_MAP_DIR" 2>&1)"
 
-log Updating the otel collector target.json
-cat > /etc/otel/targets.json <<EOF
+if [ -d /etc/otel ]; then
+    log "Updating the otel collector target.json"
+    cat > /etc/otel/targets.json <<EOF
 [{"targets": ["localhost:9100"], "labels": {"slurm_job_id": "${SLURM_JOB_ID}"}},{"targets": ["localhost:9109"], "labels": {"slurm_job_id": "${SLURM_JOB_ID}"}}]
 EOF
+else
+    log "Skipping otel target update — /etc/otel not found (observability not installed)"
+fi
