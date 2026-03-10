@@ -15,14 +15,14 @@ set -euxo pipefail
 : "${IMAGE:=$APPS_PATH/deepspeed.sqsh}"
 
 # Ensure output directory exists
-mkdir -p ${APPS_PATH}
+mkdir -p "${APPS_PATH}"
 mkdir -p logs
 
 ENROOT_IMAGE=deepspeed
-docker build -t ${ENROOT_IMAGE} -f 0.deepspeed.dockerfile .
+docker build -t "${ENROOT_IMAGE}" -f 0.deepspeed.dockerfile .
 # Remove old sqsh file if exists
-if [ -f ${ENROOT_IMAGE}.sqsh ] ; then
-    rm ${ENROOT_IMAGE}.sqsh
+if [ -f "${ENROOT_IMAGE}.sqsh" ] ; then
+    rm "${ENROOT_IMAGE}.sqsh"
 fi
-enroot import -o ${ENROOT_IMAGE}.sqsh dockerd://${ENROOT_IMAGE}:latest
-mv ${ENROOT_IMAGE}.sqsh ${IMAGE}
+enroot import -o "${ENROOT_IMAGE}.sqsh" "dockerd://${ENROOT_IMAGE}:latest"
+mv "${ENROOT_IMAGE}.sqsh" "${IMAGE}"

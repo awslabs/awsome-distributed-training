@@ -57,7 +57,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # ============================================================
 # Cluster topology
 # ============================================================
-export NODES=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
+export NODES=( $( scontrol show hostnames "$SLURM_JOB_NODELIST" ) )
 export NODES_ARRAY=($NODES)
 export HEAD_NODE=${NODES_ARRAY[0]}
 export MASTER_ADDR=$(hostname --ip-address)
@@ -72,7 +72,7 @@ export FI_LOG_LEVEL=1
 export FI_PROVIDER=efa
 export FI_EFA_USE_HUGE_PAGE=0
 export NCCL_SOCKET_IFNAME=^docker,lo,veth
-export NCCL_P2P_NET_CHUNKSIZE=2048576
+export NCCL_P2P_NET_CHUNKSIZE=2097152
 export NCCL_BUFFERSIZE=8388608
 export NCCL_TUNER_PLUGIN=/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so
 export NCCL_ASYNC_ERROR_HANDLING=1
@@ -144,20 +144,20 @@ EOF
 # ============================================================
 # Hostfile for DeepSpeed
 # ============================================================
-export HOSTFILE=/fsx/hostfile_${SLURM_JOB_ID}
+export HOSTFILE="/fsx/hostfile_${SLURM_JOB_ID}"
 function makehostfile() {
 perl -e '$slots=split /,/, $ENV{"SLURM_STEP_GPUS"};
 $slots=8 if $slots==0;
 @nodes = split /\n/, qx[scontrol show hostnames $ENV{"SLURM_JOB_NODELIST"}];
 print map { "$b$_ slots=$slots\n" } @nodes'
 }
-makehostfile > ${HOSTFILE}
+makehostfile > "${HOSTFILE}"
 
 # ============================================================
 # Container + distributed launch args
 # ============================================================
 declare -a SRUN_ARGS=(
-    --container-image ${IMAGE}
+    --container-image "${IMAGE}"
     --container-mounts /fsx,/opt/slurm/bin
 )
 
@@ -273,7 +273,10 @@ DIST_ARGS_STR="${DIST_ARGS[*]}"
 MODEL_ARGS_STR="${MODEL_ARGS[*]}"
 DS_ARGS_STR="${DS_ARGS[*]}"
 
+# Note: Variables inside the bash -c string are expanded on the host side before
+# being passed to the container. This is intentional — the container does not have
+# access to these env vars at shell expansion time.
 srun -l "${SRUN_ARGS[@]}" bash -c "export PYTHONPATH=${MEGATRON_DS_PATH} && cd ${MEGATRON_DS_PATH} && python3 -m torch.distributed.run ${DIST_ARGS_STR} pretrain_gpt.py ${MODEL_ARGS_STR} ${DS_ARGS_STR}"
 
 # Cleanup hostfile
-rm -f ${HOSTFILE}
+rm -f "${HOSTFILE}"

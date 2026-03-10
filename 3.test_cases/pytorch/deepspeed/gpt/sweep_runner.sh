@@ -10,7 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SBATCH_SCRIPT="${SCRIPT_DIR}/pretrain_gpt_103b.sbatch"
+SBATCH_SCRIPT="${SCRIPT_DIR}/slurm/pretrain_gpt_103b.sbatch"
 RESULTS_DIR="${SCRIPT_DIR}/sweep_results"
 NODES=8
 PARTITION="${PARTITION:-dev}"

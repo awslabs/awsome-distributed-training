@@ -6,7 +6,7 @@
 
 | Use Case | Description | Location |
 |----------|-------------|----------|
-| GPT-103B Pretraining | Large-scale GPT pretraining benchmark using Megatron-DeepSpeed with 3D parallelism (TP/PP/DP) and ZeRO optimization | [`pretrain_gpt_103b.sbatch`](pretrain_gpt_103b.sbatch) |
+| GPT-103B Pretraining | Large-scale GPT pretraining benchmark using Megatron-DeepSpeed with 3D parallelism (TP/PP/DP) and ZeRO optimization | [`gpt/`](gpt/) |
 | QLoRA Fine-tuning | Qwen3-8B fine-tuning with QLoRA (4-bit) + DeepSpeed ZeRO-2/3, supports EKS and Slurm | [`qlora/`](qlora/) |
 | Llama2 Fine-tuning | Llama2 fine-tuning from HuggingFace weights using Megatron-DeepSpeed | [`examples_megatron_deepspeed/finetune_hf_llama/`](examples_megatron_deepspeed/finetune_hf_llama/) |
 
@@ -88,9 +88,9 @@ Submit the best-performing configuration (TP=8, PP=8, ZeRO-0, fusions enabled):
 ```bash
 make train
 # or equivalently:
-sbatch --partition=b200 --nodes=8 \
+sbatch --partition=dev --nodes=8 \
     --export=ALL,TP=8,PP=8,ZERO_STAGE=0,ENABLE_FUSIONS=1,CONFIG_NAME=best_fused_tp8_pp8 \
-    pretrain_gpt_103b.sbatch
+    gpt/slurm/pretrain_gpt_103b.sbatch
 ```
 
 Override parallelism settings for custom configurations:
@@ -98,7 +98,7 @@ Override parallelism settings for custom configurations:
 ```bash
 sbatch --nodes=8 \
     --export=ALL,TP=8,PP=4,ZERO_STAGE=1,MICRO_BATCH_SIZE=2,CONFIG_NAME=my_config \
-    pretrain_gpt_103b.sbatch
+    gpt/slurm/pretrain_gpt_103b.sbatch
 ```
 
 #### Environment variables
@@ -106,7 +106,7 @@ sbatch --nodes=8 \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TP` | 8 | Tensor parallel size |
-| `PP` | 2 | Pipeline parallel size |
+| `PP` | 2 | Pipeline parallel size (best throughput with PP=8, see `make train`) |
 | `ZERO_STAGE` | 1 | DeepSpeed ZeRO stage (0, 1, 2, or 3) |
 | `MICRO_BATCH_SIZE` | 1 | Per-GPU micro batch size |
 | `GLOBAL_BATCH_SIZE` | 64 | Global batch size |
@@ -147,14 +147,14 @@ The following recommendations are based on extensive parameter sweeps across par
 
 ### Parsing results
 
-After training completes, parse the Slurm logs into benchmark JSON using `parse_results.py`:
+After training completes, parse the Slurm logs into benchmark JSON using `gpt/parse_results.py`:
 
 ```bash
 # Single log file
-python3 parse_results.py --log-file logs/deepspeed-pretrain-103b_123.out --config-name my_config
+python3 gpt/parse_results.py --log-file logs/deepspeed-pretrain-103b_123.out --config-name my_config
 
 # Multiple jobs tracked in a CSV
-python3 parse_results.py --jobs-csv sweep_results/sweep_jobs.csv --output-dir sweep_results
+python3 gpt/parse_results.py --jobs-csv sweep_results/sweep_jobs.csv --output-dir sweep_results
 ```
 
 ### Known issues

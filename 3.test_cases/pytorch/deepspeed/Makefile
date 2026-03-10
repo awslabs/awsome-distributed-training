@@ -43,10 +43,10 @@ clean:
 train:
 	sbatch --partition=$(PARTITION) --nodes=$(NODES) \
 		--export=ALL,TP=8,PP=8,ZERO_STAGE=0,ENABLE_FUSIONS=1,CONFIG_NAME=best_fused_tp8_pp8 \
-		pretrain_gpt_103b.sbatch
+		gpt/slurm/pretrain_gpt_103b.sbatch
 
 # ---- Results ----
 
 parse:
-	python3 parse_results.py --jobs-csv $(RESULTS_DIR)/sweep_jobs.csv \
+	python3 gpt/parse_results.py --jobs-csv $(RESULTS_DIR)/sweep_jobs.csv \
 		--logs-dir $(LOGS_DIR) --output-dir $(RESULTS_DIR)
