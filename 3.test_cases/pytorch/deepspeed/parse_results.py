@@ -6,7 +6,7 @@ parse_results.py - Parse Megatron-DeepSpeed training logs into benchmark JSON.
 
 Reads Slurm log files, extracts per-step metrics, and produces JSON files
 matching the existing benchmark-results schema at:
-  s3://paragao-new-nemo-squash-container/benchmark-results/b200/
+  s3://<YOUR_BUCKET>/benchmark-results/<instance_type>/
 
 Usage:
     python parse_results.py [--logs-dir logs] [--output-dir sweep_results]
@@ -145,6 +145,8 @@ def build_result_json(
     gbs=64,
     seq_length=2048,
     precision="bf16",
+    cluster="unknown",
+    instance_type="unknown",
 ):
     """Build the benchmark JSON matching the existing schema."""
     total_gpus = nodes * gpus_per_node
@@ -219,8 +221,8 @@ def build_result_json(
         "metadata": {
             "timestamp": timestamp,
             "job_id": str(job_id),
-            "cluster": "b200-hyperpod",
-            "instance_type": "ml.p6-b200.48xlarge",
+            "cluster": cluster,
+            "instance_type": instance_type,
             "nodes": nodes,
             "gpus_per_node": gpus_per_node,
             "total_gpus": total_gpus,
@@ -244,7 +246,9 @@ def build_result_json(
     return result
 
 
-def parse_sweep_jobs(jobs_csv, logs_dir, output_dir):
+def parse_sweep_jobs(
+    jobs_csv, logs_dir, output_dir, cluster="unknown", instance_type="unknown"
+):
     """Parse all jobs from the sweep tracking CSV."""
     os.makedirs(output_dir, exist_ok=True)
     results = []
@@ -291,6 +295,8 @@ def parse_sweep_jobs(jobs_csv, logs_dir, output_dir):
                 mbs=int(row.get("mbs", 1)),
                 gbs=int(row.get("gbs", 64)),
                 seq_length=int(row.get("seq_length", 2048)),
+                cluster=cluster,
+                instance_type=instance_type,
             )
 
             # Write individual JSON file
@@ -315,7 +321,9 @@ def parse_sweep_jobs(jobs_csv, logs_dir, output_dir):
     return results
 
 
-def parse_single_log(log_file, config_name, output_dir):
+def parse_single_log(
+    log_file, config_name, output_dir, cluster="unknown", instance_type="unknown"
+):
     """Parse a single log file."""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -334,6 +342,8 @@ def parse_single_log(log_file, config_name, output_dir):
         steps=steps,
         config_name=config_name,
         job_id=job_id,
+        cluster=cluster,
+        instance_type=instance_type,
     )
 
     now = datetime.now(timezone.utc)
@@ -372,11 +382,27 @@ def main():
         default="single_run",
         help="Config name for single log file parsing",
     )
+    parser.add_argument(
+        "--cluster",
+        default=os.environ.get("CLUSTER_NAME", "unknown"),
+        help="Cluster name for metadata (default: $CLUSTER_NAME or 'unknown')",
+    )
+    parser.add_argument(
+        "--instance-type",
+        default=os.environ.get("INSTANCE_TYPE", "unknown"),
+        help="Instance type for metadata (default: $INSTANCE_TYPE or 'unknown')",
+    )
 
     args = parser.parse_args()
 
     if args.log_file:
-        parse_single_log(args.log_file, args.config_name, args.output_dir)
+        parse_single_log(
+            args.log_file,
+            args.config_name,
+            args.output_dir,
+            cluster=args.cluster,
+            instance_type=args.instance_type,
+        )
     else:
         if not os.path.exists(args.jobs_csv):
             print(f"Error: Jobs CSV not found: {args.jobs_csv}")
@@ -384,7 +410,13 @@ def main():
                 "Run sweep_runner.sh first, or use --log-file for single file parsing"
             )
             sys.exit(1)
-        parse_sweep_jobs(args.jobs_csv, args.logs_dir, args.output_dir)
+        parse_sweep_jobs(
+            args.jobs_csv,
+            args.logs_dir,
+            args.output_dir,
+            cluster=args.cluster,
+            instance_type=args.instance_type,
+        )
 
 
 if __name__ == "__main__":

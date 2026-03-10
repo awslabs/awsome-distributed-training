@@ -7,7 +7,6 @@
 #SBATCH --job-name=deepspeed-pretrain-103b
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-#SBATCH --partition=b200
 
 set -euxo pipefail
 

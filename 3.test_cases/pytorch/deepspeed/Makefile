@@ -1,7 +1,7 @@
 ENROOT_IMAGE   ?= deepspeed
 APPS_PATH      ?= /fsx/apps
 SQUASH_FILE    ?= $(APPS_PATH)/$(ENROOT_IMAGE).sqsh
-PARTITION      ?= b200
+PARTITION      ?= dev
 NODES          ?= 8
 LOGS_DIR       ?= logs
 RESULTS_DIR    ?= sweep_results
