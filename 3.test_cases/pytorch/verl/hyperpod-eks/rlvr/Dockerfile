@@ -1,7 +1,8 @@
 # Dockerfile for VERL with EFA support
-# Using hiyouga/verl base image and adding EFA capabilities
-FROM hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.4-flashinfer0.2.2-cxx11abi0
-
+# Using verlai/verl base image (torch 2.8+, vLLM 0.11+) and adding EFA capabilities
+ARG TAG=vllm011.latest
+FROM verlai/verl:${TAG}
+ARG MEGATRON_LM_VERSION=core_v0.13.1
 # EFA configuration
 ARG OPEN_MPI_PATH=/opt/amazon/openmpi/
 ENV EFA_VERSION=1.43.3
@@ -107,7 +108,9 @@ RUN pip install \
     boto3 \
     botocore \
     tenacity \
-    s3torchconnector
+    s3torchconnector \
+    langdetect \
+    peft
 
 # Clone and install VERL
 WORKDIR /workspace
@@ -118,6 +121,15 @@ WORKDIR /workspace/verl
 
 # Install VERL in development mode
 RUN pip install -e .
+
+#####################
+# Install megatron-lm
+#####################
+RUN pip install -U setuptools
+RUN cd /workspace && git clone --depth 1 --branch ${MEGATRON_LM_VERSION} https://github.com/NVIDIA/Megatron-LM.git \
+    && cd Megatron-LM \
+    && pip install nltk  \
+    && pip install .
 
 # Set working directory
 WORKDIR /workspace
