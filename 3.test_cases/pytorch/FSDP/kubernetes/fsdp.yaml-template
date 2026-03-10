@@ -6,7 +6,7 @@ spec:
   elasticPolicy:
     rdzvBackend: c10d
     minReplicas: 1
-    maxReplicas: $MAX_NODES
+    maxReplicas: $NUM_NODES
     maxRestarts: 100
     metrics:
       - type: Resource
@@ -17,7 +17,7 @@ spec:
             averageUtilization: 90
   pytorchReplicaSpecs:
     Worker:
-      replicas: $MAX_NODES
+      replicas: $NUM_NODES
       restartPolicy: OnFailure
       template:
         metadata:
@@ -94,7 +94,7 @@ spec:
               command: 
                 - /usr/local/bin/torchrun
                 - --nproc_per_node=$GPU_PER_NODE
-                - --nnodes=$MIN_NODES:$MAX_NODES
+                - --nnodes=1:$NUM_NODES
                 - /fsdp/train.py
                 - --max_context_width=4096
                 - --num_key_value_heads=32
