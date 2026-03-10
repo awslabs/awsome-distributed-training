@@ -493,10 +493,6 @@ Run the job:
 ```bash
 # Edit the manifest to set your image, node count, and GPU count, then:
 kubectl apply -f EKS/llama3_2_1b-fsdp-nsight.yaml
-
-# Or use envsubst to fill in variables:
-export IMAGE_URI=<your-ecr-image> NUM_NODES=2 GPU_PER_NODE=1
-envsubst < EKS/llama3_2_1b-fsdp-nsight.yaml | kubectl apply -f -
 ```
 
 The profiling wrapper will:
