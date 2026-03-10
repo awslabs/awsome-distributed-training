@@ -17,6 +17,18 @@ NVIDIA BioNeMo is a domain-specific machine learning framework for training and 
 This project provides a guide to run [Nvidia's BioNemo](https://docs.nvidia.com/bionemo-framework/latest/index.html) on AWS ParallelCluster and pretrain the popular [ESM models](https://github.com/facebookresearch/esm) specifically the [ESM1nv](https://docs.nvidia.com/bionemo-framework/latest/notebooks/model_training_esm1nv.html) model.
 
 
+## Tested Configurations
+
+| Instance | GPUs | Status | Notes |
+|----------|------|--------|-------|
+| p4de.24xlarge | 8 x A100 80 GB | Tested | Primary target (4 nodes) |
+| p5en.48xlarge | 8 x H200 80 GB | Untested | Expected to work |
+| p5.48xlarge | 8 x H100 80 GB | Untested | Expected to work |
+| g5.12xlarge | 4 x A10G 24 GB | Untested | May need smaller model or offloading |
+
+> See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
+> for parameter adjustments needed across instance types.
+
 ## 0. Prerequisites
 
 0. You have access to the bionemo container. To get the access to BioNeMo, visit the [information website](https://www.nvidia.com/en-us/clara/bionemo/).

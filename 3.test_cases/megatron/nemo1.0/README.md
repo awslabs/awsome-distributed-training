@@ -17,6 +17,18 @@ Table of contents:
 - [8. References](#8-references)
 - [9. Authors / Reviewers](#9-authors--reviewers)
 
+## Tested Configurations
+
+| Instance | GPUs | Status | Notes |
+|----------|------|--------|-------|
+| p4de.24xlarge | 8 x A100 80 GB | Tested | Primary target |
+| p5en.48xlarge | 8 x H200 80 GB | Untested | Expected to work |
+| p5.48xlarge | 8 x H100 80 GB | Untested | Expected to work |
+| g5.12xlarge | 4 x A10G 24 GB | Untested | Likely needs smaller model sizes |
+
+> See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
+> for parameter adjustments needed across instance types.
+
 ## 1. Pre-requisites
 
 The following pre-requisites are needed to run this example:

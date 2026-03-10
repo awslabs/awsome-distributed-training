@@ -2,6 +2,19 @@
 
 This test case contains examples and configurations for running distributed training with NVIDIA NeMo 2.0.
 
+## Tested Configurations
+
+| Instance | GPUs | Status | Notes |
+|----------|------|--------|-------|
+| p5en.48xlarge | 8 x H200 80 GB | Tested | Primary target; see PERFORMANCE.md in slurm/ |
+| p5.48xlarge | 8 x H100 80 GB | Tested | |
+| p4de.24xlarge | 8 x A100 80 GB | Untested | Expected to work |
+| g5.12xlarge | 4 x A10G 24 GB | Untested | May need smaller model configs |
+| g6e.12xlarge | 4 x L40S 48 GB | Untested | |
+
+> See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
+> for parameter adjustments needed across instance types.
+
 ## Overview
 
 [NVIDIA NeMo](https://developer.nvidia.com/nemo-framework) is a cloud-native framework for training and deploying generative AI models, optimized for architectures ranging from billions to trillions of parameters. NeMo 2.0 introduces a Python-based configuration system, providing enhanced flexibility, better IDE integration, and streamlined customization for large language model training.

@@ -1,5 +1,17 @@
 ## Train Llama 3 8B model on Kubernetes
 
+### Tested Configurations
+
+| Instance | NeuronCores | Status | Notes |
+|----------|-------------|--------|-------|
+| trn1.32xlarge | 32 | Tested | |
+| trn1n.32xlarge | 32 | Tested | |
+| trn2.48xlarge | 64 | Untested | Expected to work |
+
+> See the [Instance Compatibility Guide](../../../../../docs/instance-compatibility.md)
+> and [Trainium instance profile](../../../../../docs/instance-profiles/trn1.md)
+> for details on Trainium hardware.
+
 In this section, we showcase how to pre-train Llama3-8B, Llama3 8B model using Trn1.32xlarge/Trn1n.32xlarge instances using the Neuron Distributed library. To train the LLama model in this example, we will apply the following optimizations using the Neuron Distributed library:
 
 1. [Tensor Parallelism](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/neuronx-distributed/tensor_parallelism_overview.html#tensor-parallelism-overview)

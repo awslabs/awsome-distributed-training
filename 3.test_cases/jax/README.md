@@ -2,6 +2,18 @@
 
 Ths directory contains a sample Dockerfile `jax_paxml.Dockerfile` to run [JAX](https://github.com/google/jax) and [Paxml](https://github.com/google/paxml) on AWS.
 
+## Tested Configurations
+
+| Instance | GPUs | Status | Notes |
+|----------|------|--------|-------|
+| p5en.48xlarge | 8 x H200 80 GB | Untested | Expected to work |
+| p5.48xlarge | 8 x H100 80 GB | Untested | Expected to work |
+| p4de.24xlarge | 8 x A100 80 GB | Untested | Expected to work |
+| g5.12xlarge | 4 x A10G 24 GB | Untested | May need smaller model configs |
+
+> See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
+> for parameter adjustments needed across instance types.
+
 ## Container description
 
 In principle, the reference `Dockerfile` does the following:
