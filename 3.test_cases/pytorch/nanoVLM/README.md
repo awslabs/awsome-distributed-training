@@ -3,6 +3,19 @@
 This test case demonstrates distributed training of [NanoVLM](https://github.com/huggingface/nanoVLM/), a repository for training/finetuning a small sized Vision-Language Model with a lightweight implementation in pure PyTorch. 
 
 
+## Tested Configurations
+
+| Instance | GPUs | Status | Notes |
+|----------|------|--------|-------|
+| g5.12xlarge | 4 x A10G 24 GB | Tested | Requires config changes (see step 7 optional section) |
+| p5en.48xlarge | 8 x H200 80 GB | Untested | Expected to work with default config |
+| p5.48xlarge | 8 x H100 80 GB | Untested | Expected to work with default config |
+| p4de.24xlarge | 8 x A100 80 GB | Untested | Expected to work with default config |
+
+> **g5 users**: See step 7 below for required configuration changes to avoid OOM.
+> See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
+> for general guidance on running across instance types.
+
 ## 1. Prerequisites
 
 This guide assumes that you have the following:

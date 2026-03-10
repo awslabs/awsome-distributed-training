@@ -14,6 +14,20 @@ This walkthrough demonstrates how to set up and run large language model (LLM) k
     └── setup.sh              # Environment setup script for PyTorch and dependencies
 ```
 
+## Tested Configurations
+
+| Instance | GPUs | Status | Notes |
+|----------|------|--------|-------|
+| p5en.48xlarge | 8 x H200 80 GB | Tested | Primary target |
+| p5.48xlarge | 8 x H100 80 GB | Tested | |
+| p4d.24xlarge | 8 x A100 40 GB | Tested | |
+| p4de.24xlarge | 8 x A100 80 GB | Untested | Expected to work |
+| g5.12xlarge | 4 x A10G 24 GB | Untested | May need smaller teacher/student models |
+| g6e.12xlarge | 4 x L40S 48 GB | Untested | |
+
+> See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
+> for parameter adjustments needed across instance types.
+
 ## Getting Started
 
 **Compatible Instance Types**: The architectures and test cases in this repository are designed to work with GPU instances including P4d, P5, and P5en instance types for optimal distributed training performance.

@@ -9,6 +9,19 @@ This example showcases [PyTorch DDP](https://pytorch.org/tutorials/beginner/ddp_
 - **CPU Training**: Uses the GLOO backend for distributed training on CPU nodes
 - **GPU Training**: Automatically switches to NCCL backend when GPUs are available, providing optimized multi-GPU training
 
+## Tested Configurations
+
+| Instance | GPUs | Status | Notes |
+|----------|------|--------|-------|
+| p5en.48xlarge | 8 x H200 80 GB | Untested | Expected to work |
+| p5.48xlarge | 8 x H100 80 GB | Untested | Expected to work |
+| p4de.24xlarge | 8 x A100 80 GB | Untested | Expected to work |
+| g5.12xlarge | 4 x A10G 24 GB | Untested | Expected to work |
+
+> DDP requires the full model to fit in each GPU. See the
+> [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
+> for guidance on which models fit on which instances.
+
 ## Training
 
 ### Basic Usage
