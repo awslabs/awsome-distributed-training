@@ -9,8 +9,14 @@ export TAG=vllm011.latest
 export EKS_CLUSTER_NAME="<your-eks-cluster-name>"
 export INSTANCE_TYPE="<your GPU instance type>" # Example: "p5en.48xlarge"
 export NUM_NODES=4                    # Single source of truth for number of nodes
-export NUM_GPU_PER_NODE=8
-export NUM_EFA_PER_NODE=16
+# NUM_GPU_PER_NODE and NUM_EFA_PER_NODE are set by the instance profile.
+# Override here only if your setup differs from the standard profile.
+# export NUM_GPU_PER_NODE=8
+# export NUM_EFA_PER_NODE=16
+
+# Instance profile (optional — auto-detected from INSTANCE_TYPE if not set)
+# See recipe/profiles/ for available profiles.
+# export INSTANCE_PROFILE="g5-12xlarge"  # Uncomment to force a specific profile
 
 
 # Ray configs
