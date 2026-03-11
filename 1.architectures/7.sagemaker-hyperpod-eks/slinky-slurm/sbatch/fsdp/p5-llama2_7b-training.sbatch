@@ -8,14 +8,14 @@
 #SBATCH --error=logs/%x_%j.err     # logfile for stderr, remove it to merge both outputs
 #SBATCH --exclusive                # job has exclusive use of the resource, no sharing
 #SBATCH --ntasks-per-node=1        # one task per node
-#SBATCH --cpus-per-task=32         # match the number of CPUs per node
+#SBATCH --cpus-per-task=192        # match the number of CPUs per node
 set -ex;
 
 ###########################
 ###### User Variables #####
 ###########################
 
-GPUS_PER_NODE=1
+GPUS_PER_NODE=8
 
 ###########################
 ## Environment Variables ##
@@ -30,8 +30,15 @@ export LD_LIBRARY_PATH="lib:${EFA_PATH}/lib:${OPEN_MPI_PATH}/lib:${CUDA_HOME}/li
 # LD_PRELOAD is required for PyTorch to find the NCCL library
 export LD_PRELOAD="/usr/local/lib/libnccl.so.2"
 
-export CUDA_VISIBLE_DEVICES=0     # Restrict PyTorch to only use the first GPU (GPU 0)
 export NVIDIA_VISIBLE_DEVICES=all # Make all GPUs visible to NVIDIA container runtime
+
+# NCCL settings for EFA (p5-specific: GPUDirect RDMA, ring algorithm)
+export NCCL_PROTO=simple           # Use a simpler communication protocol, often more reliable for EFA
+export NCCL_ALGO=ring              # Use ring algorithm for collective operations, typically best for EFA
+export NCCL_NET_GDR_LEVEL=5        # Enable GPUDirect RDMA for direct GPU-to-network transfers
+export NCCL_NET_MAX_REQUESTS=8     # Maximum number of concurrent network requests, optimized for EFA
+export NCCL_MIN_NCHANNELS=8        # Minimum number of channels for NCCL communications, increases parallelism
+export NCCL_NSOCKS_PERTHREAD=8     # Number of sockets per thread for network operations
 
 # Debug settings
 export NCCL_DEBUG=INFO       # Set NCCL debug level for troubleshooting
@@ -44,12 +51,12 @@ export NCCL_ASYNC_ERROR_HANDLING=1 # Enable asynchronous error handling for bett
 
 # Buffer settings
 export NCCL_BUFFSIZE=2097152 # Set NCCL communication buffer size to 2MB for larger transfers
-         
+
 # TCP connection settings
 export TORCH_DISTRIBUTED_DETAILED_LOGGING=1 # Enable verbose logging for PyTorch distributed operations
 export GLOO_SOCKET_IFNAME=eth0              # Use eth0 network interface for Gloo collective operations
 export TP_SOCKET_IFNAME=eth0                # Use eth0 for tensor parallelism communication
-export NCCL_SOCKET_IFNAME=eth0              # Use eth0 (primary EC2 network interface) for NCCL communication
+export NCCL_SOCKET_IFNAME=^lo               # Exclude loopback interface (p5 uses multiple EFA interfaces)
 
 # TCP Store timeout settings
 export TORCHELASTIC_MAX_CALLTIME=3600 # Set maximum call time for TorchElastic operations to 1 hour
@@ -61,9 +68,9 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL # Enable detailed debugging for distribute
 export TORCH_CPP_LOG_LEVEL=INFO       # Set C++ frontend logging level to INFO
 export CUDA_LAUNCH_BLOCKING=0         # Allow asynchronous CUDA kernel launches (0=async, 1=sync)
 
-# HuggingFace settings 
+# HuggingFace settings
 export HF_HUB_ETAG_TIMEOUT=60     # Metadata timeout (in seconds) for large clusters
-export HF_TOKEN=<your-token-here> # Token used to avoid throttling for data streaming
+export HF_TOKEN="<your-token-here>" # Token used to avoid throttling for data streaming
 
 ###########################
 ####### Torch Dist  #######
@@ -97,17 +104,17 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # llama2_7b Training Params ##
 ############################
 declare -a TRAINING_ARGS=(
-    --max_context_width=512
-    --num_key_value_heads=8
-    --intermediate_size=2048
-    --hidden_width=1024
-    --num_layers=8
-    --num_heads=16
+    --max_context_width=4096
+    --num_key_value_heads=32
+    --intermediate_size=11008
+    --hidden_width=4096
+    --num_layers=32
+    --num_heads=32
     --model_type=llama_v2
     --tokenizer="hf-internal-testing/llama-tokenizer"
-    --checkpoint_freq=100
-    --validation_freq=100
-    --max_steps=1000
+    --checkpoint_freq=5000
+    --validation_freq=500
+    --max_steps=5000
     --checkpoint_dir=./checkpoints
     --dataset='allenai/c4'
     --dataset_config_name='en'
@@ -117,7 +124,7 @@ declare -a TRAINING_ARGS=(
     --gradient_checkpointing=True
     --mixed_precision=bf16
     --sharding_strategy="full" # https://pytorch.org/docs/stable/fsdp.html
-    --offload_activations=1
+    --offload_activations=0
 )
 
 srun --export=ALL -l ${TORCHRUN} "${TORCHRUN_ARGS[@]}" $TRAIN_SCRIPT "${TRAINING_ARGS[@]}"

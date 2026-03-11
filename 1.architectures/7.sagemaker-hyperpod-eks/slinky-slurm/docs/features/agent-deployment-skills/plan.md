@@ -19,9 +19,9 @@ completed: 2026-03-09
 - [x] 6. Create `deploy-slurm-cluster` skill
 - [x] 7. Create `validate-deployment` skill
 - [x] 8. Create `tests/test_setup.bats` (12 tests)
-- [x] 9. Create `tests/test_install.bats` (10 tests)
-- [x] 10. Create `tests/test_destroy.bats` (7 tests)
-- [x] 11. Run `bats tests/` — all 89 tests pass (45 deploy + 12 setup + 10 install + 7 destroy + 15 post-session updates)
+- [x] 9. Create `tests/test_install.bats` (21 tests)
+- [x] 10. Create `tests/test_destroy.bats` (18 tests)
+- [x] 11. Run `bats tests/` — all 96 tests pass (45 deploy + 12 setup + 21 install + 18 destroy)
 
 ## Completed: Skill Migration
 
@@ -114,7 +114,7 @@ Post-deployment health checks with 7 sequential steps:
 Includes a ready-to-run quick validation script and a key logs reference
 section for debugging.
 
-## Completed: New Bats Tests (29 tests)
+## Completed: New Bats Tests (51 tests)
 
 ### `tests/test_setup.bats` — 12 tests
 
@@ -124,7 +124,7 @@ section for debugging.
 | `resolve_helm_profile` | 3 | g5 sets all 7 variables, p5 overrides, invalid type |
 | Template substitution | 2 | g5 no unresolved vars, p5 correct GPU/EFA/replicas |
 
-### `tests/test_install.bats` — 10 tests
+### `tests/test_install.bats` — 21 tests
 
 | Category | Count | Tests |
 |----------|-------|-------|
@@ -133,25 +133,27 @@ section for debugging.
 | Flag validation | 1 | `--skip-setup` fails when `slurm-values.yaml` missing |
 | Install order | 1 | cert-manager before LB Controller before MariaDB |
 | env_vars.sh deps | 2 | EKS_CLUSTER_NAME and VPC_ID sourced from env_vars.sh |
+| EBS CSI / gp3 | 11 | EBS CSI addon check, IAM policy creation, gp3 StorageClass, phase ordering |
 
-### `tests/test_destroy.bats` — 7 tests
+### `tests/test_destroy.bats` — 18 tests
 
 | Category | Count | Tests |
 |----------|-------|-------|
 | Argument parsing | 4 | `--help`, missing `--infra`, invalid `--infra`, unknown option |
 | Optional flags | 2 | `--region` in usage, `--stack-name` in usage |
 | Non-interactive | 1 | Aborts when confirmation prompt answered with 'n' |
+| Teardown ordering | 4 | Reverse install order, CodeBuild TF destroy with dummy var |
+| IAM cleanup | 4 | Pod Identity association, IAM role/policy deletion |
+| CodeBuild TF | 3 | TF destroy path, dummy source_s3_bucket var, state cleanup |
 
 ### Test Results
 
 ```
-89 tests, 0 failures
+96 tests, 0 failures
 ```
 
-All 45 existing tests in `test_deploy.bats` continue to pass. The 29 new
-tests across the 3 new files all pass. An additional 15 tests were added
-in later sessions for version constants, install order, env_vars.sh
-dependency validation, and template substitution coverage.
+All 45 existing tests in `test_deploy.bats` continue to pass. The 3 new
+test files cover setup (12), install (21), and destroy (18) phases.
 
 ## Deliverables
 
@@ -168,8 +170,8 @@ dependency validation, and template substitution coverage.
 
 # New tests
 tests/test_setup.bats    (12 tests)
-tests/test_install.bats  (10 tests)
-tests/test_destroy.bats  (7 tests)
+tests/test_install.bats  (21 tests)
+tests/test_destroy.bats  (18 tests)
 
 # Feature docs
 docs/features/agent-deployment-skills/idea.md

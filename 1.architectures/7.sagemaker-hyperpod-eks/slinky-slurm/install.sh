@@ -20,6 +20,8 @@ LB_CONTROLLER_CHART_VERSION="1.11.0"
 LB_CONTROLLER_POLICY_URL="https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.11.0/docs/install/iam_policy.json"
 LB_CONTROLLER_IAM_ROLE_NAME="AmazonEKS_LB_Controller_Role_slinky"
 LB_CONTROLLER_IAM_POLICY_NAME="AWSLoadBalancerControllerIAMPolicy_slinky"
+EBS_CSI_IAM_ROLE_NAME="AmazonEKS_EBS_CSI_DriverRole_slinky"
+EBS_CSI_INLINE_POLICY_NAME="SageMakerHyperPodVolumeAccess"
 
 ###########################
 ###### Usage Function #####
@@ -285,6 +287,137 @@ kubectl wait --for=condition=Available \
     deployment/aws-load-balancer-controller \
     -n kube-system --timeout=120s
 echo "  LB Controller webhook ready."
+
+###########################
+## Install EBS CSI Driver #
+###########################
+
+# The EBS CSI driver is required for dynamic PV provisioning (MariaDB, Slurm
+# accounting). On HyperPod, it also needs sagemaker:AttachClusterNodeVolume
+# permissions via an inline policy.
+
+echo ""
+echo "Installing EBS CSI Driver..."
+
+# Create IAM role for EBS CSI controller (Pod Identity)
+if ! aws iam get-role --role-name "${EBS_CSI_IAM_ROLE_NAME}" &>/dev/null; then
+    echo "  Creating IAM role ${EBS_CSI_IAM_ROLE_NAME}..."
+    TRUST_POLICY='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"pods.eks.amazonaws.com"},"Action":["sts:AssumeRole","sts:TagSession"]}]}'
+    aws iam create-role \
+        --role-name "${EBS_CSI_IAM_ROLE_NAME}" \
+        --assume-role-policy-document "${TRUST_POLICY}" \
+        --no-cli-pager
+
+    # Attach AWS managed policy for EBS CSI
+    aws iam attach-role-policy \
+        --role-name "${EBS_CSI_IAM_ROLE_NAME}" \
+        --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+
+    # Inline policy for HyperPod-specific volume operations
+    INLINE_POLICY=$(cat <<POLICY
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "sagemaker:AttachClusterNodeVolume",
+                "sagemaker:DetachClusterNodeVolume"
+            ],
+            "Resource": "arn:aws:sagemaker:${AWS_REGION}:${AWS_ACCOUNT_ID}:cluster/*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "eks:DescribeCluster",
+            "Resource": "arn:aws:eks:${AWS_REGION}:${AWS_ACCOUNT_ID}:cluster/${EKS_CLUSTER_NAME}"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AttachVolume",
+                "ec2:DetachVolume",
+                "ec2:DescribeVolumes"
+            ],
+            "Resource": "arn:aws:ec2:${AWS_REGION}:${AWS_ACCOUNT_ID}:volume/*"
+        }
+    ]
+}
+POLICY
+    )
+    aws iam put-role-policy \
+        --role-name "${EBS_CSI_IAM_ROLE_NAME}" \
+        --policy-name "${EBS_CSI_INLINE_POLICY_NAME}" \
+        --policy-document "${INLINE_POLICY}"
+    echo "  Role created with EBS CSI and HyperPod policies."
+else
+    echo "  IAM role already exists: ${EBS_CSI_IAM_ROLE_NAME}"
+fi
+
+EBS_CSI_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${EBS_CSI_IAM_ROLE_NAME}"
+
+# Create Pod Identity association for EBS CSI controller
+EXISTING_EBS_ASSOC=$(aws eks list-pod-identity-associations \
+    --cluster-name "${EKS_CLUSTER_NAME}" \
+    --namespace "kube-system" \
+    --service-account "ebs-csi-controller-sa" \
+    --region "${AWS_REGION}" \
+    --query "associations[0].associationId" --output text 2>/dev/null || echo "None")
+
+if [[ "${EXISTING_EBS_ASSOC}" == "None" || -z "${EXISTING_EBS_ASSOC}" ]]; then
+    echo "  Creating Pod Identity association for ebs-csi-controller-sa..."
+    aws eks create-pod-identity-association \
+        --cluster-name "${EKS_CLUSTER_NAME}" \
+        --namespace "kube-system" \
+        --service-account "ebs-csi-controller-sa" \
+        --role-arn "${EBS_CSI_ROLE_ARN}" \
+        --region "${AWS_REGION}" \
+        --no-cli-pager
+    echo "  Pod Identity association created."
+else
+    echo "  Pod Identity association already exists: ${EXISTING_EBS_ASSOC}"
+fi
+
+# Install the EBS CSI driver EKS addon
+EXISTING_ADDON=$(aws eks describe-addon \
+    --cluster-name "${EKS_CLUSTER_NAME}" \
+    --addon-name "aws-ebs-csi-driver" \
+    --region "${AWS_REGION}" \
+    --query "addon.status" --output text 2>/dev/null || echo "NOT_FOUND")
+
+if [[ "${EXISTING_ADDON}" == "NOT_FOUND" ]]; then
+    echo "  Installing EBS CSI driver addon..."
+    aws eks create-addon \
+        --cluster-name "${EKS_CLUSTER_NAME}" \
+        --addon-name "aws-ebs-csi-driver" \
+        --region "${AWS_REGION}" \
+        --no-cli-pager
+    echo "  Waiting for addon to become active..."
+    aws eks wait addon-active \
+        --cluster-name "${EKS_CLUSTER_NAME}" \
+        --addon-name "aws-ebs-csi-driver" \
+        --region "${AWS_REGION}"
+    echo "  EBS CSI driver addon installed."
+else
+    echo "  EBS CSI driver addon already installed (status: ${EXISTING_ADDON})."
+fi
+
+# Create gp3 StorageClass (needed by MariaDB and Slurm accounting PVCs)
+if ! kubectl get storageclass gp3 &>/dev/null; then
+    echo "  Creating gp3 StorageClass..."
+    kubectl apply -f - <<SC
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+volumeBindingMode: WaitForFirstConsumer
+SC
+    echo "  gp3 StorageClass created."
+else
+    echo "  gp3 StorageClass already exists."
+fi
 
 ###########################
 ## Apply FSx PVC ##########

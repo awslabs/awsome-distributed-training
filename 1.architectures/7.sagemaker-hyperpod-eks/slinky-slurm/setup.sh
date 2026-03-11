@@ -284,15 +284,25 @@ else
     else
         # Terraform path: init and apply codebuild.tf
         echo "  Deploying CodeBuild resources (Terraform)..."
-        local cb_dir="${SCRIPT_DIR}/codebuild-tf"
+        cb_dir="${SCRIPT_DIR}/codebuild-tf"
         mkdir -p "${cb_dir}"
         cp "${SCRIPT_DIR}/codebuild.tf" "${cb_dir}/main.tf"
+
+        # Check if ECR repository already exists
+        create_ecr="true"
+        if aws ecr describe-repositories \
+            --repository-names "${REPO_NAME}" \
+            --region "${AWS_REGION}" &>/dev/null; then
+            create_ecr="false"
+            echo "  ECR repository '${REPO_NAME}' already exists (skipping creation)."
+        fi
 
         terraform -chdir="${cb_dir}" init -input=false
         terraform -chdir="${cb_dir}" apply -auto-approve \
             -var="source_s3_bucket=${S3_BUCKET}" \
             -var="repository_name=${REPO_NAME}" \
-            -var="image_tag=${IMAGE_TAG}"
+            -var="image_tag=${IMAGE_TAG}" \
+            -var="create_ecr_repository=${create_ecr}"
 
         CODEBUILD_PROJECT=$(terraform -chdir="${cb_dir}" output -raw codebuild_project_name)
     fi
@@ -358,11 +368,20 @@ echo "  Public key: ${SSH_KEY}"
 echo ""
 echo "Querying FSx for Lustre filesystem..."
 
-# Extract ResourceNamePrefix from params.json to build the expected tag.
-RESOURCE_NAME_PREFIX=$(jq -r \
-    '.[] | select(.ParameterKey == "ResourceNamePrefix") | .ParameterValue' \
-    "${SCRIPT_DIR}/params.json")
-FSX_TAG_NAME="${RESOURCE_NAME_PREFIX}-fsx-lustre"
+# Extract ResourceNamePrefix from the appropriate config file.
+if [[ "${INFRA}" == "cfn" ]]; then
+    RESOURCE_NAME_PREFIX=$(jq -r \
+        '.[] | select(.ParameterKey == "ResourceNamePrefix") | .ParameterValue' \
+        "${SCRIPT_DIR}/params.json")
+else
+    RESOURCE_NAME_PREFIX=$(grep '^resource_name_prefix' "${SCRIPT_DIR}/custom.tfvars" \
+        | sed 's/.*=[[:space:]]*"\(.*\)"/\1/')
+fi
+if [[ "${INFRA}" == "cfn" ]]; then
+    FSX_TAG_NAME="${RESOURCE_NAME_PREFIX}-fsx-lustre"
+else
+    FSX_TAG_NAME="${RESOURCE_NAME_PREFIX}-fsx"
+fi
 
 echo "  Looking for FSx filesystem with Name tag: ${FSX_TAG_NAME}"
 

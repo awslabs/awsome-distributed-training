@@ -11,8 +11,8 @@ instance_groups = [
     availability_zone_id      = "usw2-az2",
     ebs_volume_size_in_gb     = 500,
     threads_per_core          = 2,
-    enable_stress_check       = true,
-    enable_connectivity_check = true,
+    enable_stress_check       = false,
+    enable_connectivity_check = false,
     lifecycle_script          = "on_create.sh"
   },
   {
@@ -30,7 +30,7 @@ instance_groups = [
 create_observability_module               = true
 network_metric_level                      = "ADVANCED"
 logging_enabled                           = true
-create_task_governance_module             = true
+create_task_governance_module             = false
 create_hyperpod_training_operator_module  = false
 create_hyperpod_inference_operator_module = false
 enable_guardduty_cleanup                  = true

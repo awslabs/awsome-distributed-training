@@ -31,14 +31,26 @@ variable "source_s3_key" {
   description = "S3 key for the build context zip archive."
 }
 
+variable "create_ecr_repository" {
+  type        = bool
+  default     = true
+  description = "Set to false to skip ECR repository creation when it already exists."
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
+
+locals {
+  ecr_arn = var.create_ecr_repository ? aws_ecr_repository.slurmd[0].arn : "arn:aws:ecr:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:repository/${var.repository_name}"
+  ecr_url = var.create_ecr_repository ? aws_ecr_repository.slurmd[0].repository_url : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${var.repository_name}"
+}
 
 ###########################
 ## ECR Repository #########
 ###########################
 
 resource "aws_ecr_repository" "slurmd" {
+  count                = var.create_ecr_repository ? 1 : 0
   name                 = var.repository_name
   image_tag_mutability = "MUTABLE"
 
@@ -48,7 +60,8 @@ resource "aws_ecr_repository" "slurmd" {
 }
 
 resource "aws_ecr_lifecycle_policy" "slurmd" {
-  repository = aws_ecr_repository.slurmd.name
+  count      = var.create_ecr_repository ? 1 : 0
+  repository = aws_ecr_repository.slurmd[0].name
 
   policy = jsonencode({
     rules = [
@@ -112,7 +125,7 @@ resource "aws_iam_role_policy" "codebuild_ecr" {
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload"
         ]
-        Resource = aws_ecr_repository.slurmd.arn
+        Resource = local.ecr_arn
       },
       {
         Effect = "Allow"
@@ -194,7 +207,7 @@ resource "aws_codebuild_project" "slurmd" {
 
 output "ecr_repository_uri" {
   description = "ECR repository URI for the slurmd container image."
-  value       = aws_ecr_repository.slurmd.repository_url
+  value       = local.ecr_url
 }
 
 output "codebuild_project_name" {

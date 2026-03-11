@@ -178,13 +178,13 @@ For a full end-to-end validation, submit the Llama2 7B training job:
 
 **For g5:**
 ```bash
-sbatch g5/g5-llama2_7b-training.sbatch
+sbatch sbatch/fsdp/g5-llama2_7b-training.sbatch
 squeue  # Monitor
 ```
 
 **For p5:**
 ```bash
-sbatch p5/p5-llama2_7b-training.sbatch
+sbatch sbatch/fsdp/p5-llama2_7b-training.sbatch
 squeue  # Monitor
 ```
 
@@ -266,7 +266,7 @@ kubectl -n slurm logs mariadb-0 --tail=50
 ## References
 
 - `install.sh` -- Cluster installation script (produced the deployment)
-- `g5/g5-llama2_7b-training.sbatch` -- g5 training job (4 nodes, 1 GPU each)
-- `p5/p5-llama2_7b-training.sbatch` -- p5 training job (4 nodes, 4 GPUs each)
+- `sbatch/fsdp/g5-llama2_7b-training.sbatch` -- g5 training job (4 nodes, 1 GPU each)
+- `sbatch/fsdp/p5-llama2_7b-training.sbatch` -- p5 training job (4 nodes, 8 GPUs each)
 - `slurm-values.yaml` -- Generated Helm values (runtime config)
 - `slurm-login-service-patch.yaml` -- Generated NLB service patch

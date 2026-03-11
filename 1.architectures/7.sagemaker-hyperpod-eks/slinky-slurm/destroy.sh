@@ -15,6 +15,8 @@ CODEBUILD_STACK_NAME="slurmd-codebuild-stack"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LB_CONTROLLER_IAM_ROLE_NAME="AmazonEKS_LB_Controller_Role_slinky"
 LB_CONTROLLER_IAM_POLICY_NAME="AWSLoadBalancerControllerIAMPolicy_slinky"
+EBS_CSI_IAM_ROLE_NAME="AmazonEKS_EBS_CSI_DriverRole_slinky"
+EBS_CSI_INLINE_POLICY_NAME="SageMakerHyperPodVolumeAccess"
 
 ###########################
 ###### Usage Function #####
@@ -182,6 +184,62 @@ else
 fi
 
 ###########################
+## Uninstall EBS CSI ######
+###########################
+
+echo ""
+echo "Removing EBS CSI driver..."
+
+# Delete EBS CSI addon
+if [[ -n "${EKS_CLUSTER_NAME:-}" ]]; then
+    if aws eks describe-addon \
+        --cluster-name "${EKS_CLUSTER_NAME}" \
+        --addon-name "aws-ebs-csi-driver" \
+        --region "${AWS_REGION}" &>/dev/null; then
+        echo "  Deleting EBS CSI driver addon..."
+        aws eks delete-addon \
+            --cluster-name "${EKS_CLUSTER_NAME}" \
+            --addon-name "aws-ebs-csi-driver" \
+            --region "${AWS_REGION}" \
+            --no-cli-pager 2>/dev/null || true
+    fi
+
+    # Delete Pod Identity association
+    EBS_ASSOC_ID=$(aws eks list-pod-identity-associations \
+        --cluster-name "${EKS_CLUSTER_NAME}" \
+        --namespace "kube-system" \
+        --service-account "ebs-csi-controller-sa" \
+        --region "${AWS_REGION}" \
+        --query "associations[0].associationId" --output text 2>/dev/null || echo "None")
+
+    if [[ "${EBS_ASSOC_ID}" != "None" && -n "${EBS_ASSOC_ID}" ]]; then
+        echo "  Deleting EBS CSI Pod Identity association ${EBS_ASSOC_ID}..."
+        aws eks delete-pod-identity-association \
+            --cluster-name "${EKS_CLUSTER_NAME}" \
+            --association-id "${EBS_ASSOC_ID}" \
+            --region "${AWS_REGION}" \
+            --no-cli-pager 2>/dev/null || true
+    fi
+fi
+
+# Delete gp3 StorageClass
+kubectl delete storageclass gp3 2>/dev/null || echo "  gp3 StorageClass not found."
+
+# Delete IAM role and policies
+if aws iam get-role --role-name "${EBS_CSI_IAM_ROLE_NAME}" &>/dev/null; then
+    echo "  Detaching policies from ${EBS_CSI_IAM_ROLE_NAME}..."
+    aws iam detach-role-policy \
+        --role-name "${EBS_CSI_IAM_ROLE_NAME}" \
+        --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy" 2>/dev/null || true
+    aws iam delete-role-policy \
+        --role-name "${EBS_CSI_IAM_ROLE_NAME}" \
+        --policy-name "${EBS_CSI_INLINE_POLICY_NAME}" 2>/dev/null || true
+    echo "  Deleting IAM role ${EBS_CSI_IAM_ROLE_NAME}..."
+    aws iam delete-role \
+        --role-name "${EBS_CSI_IAM_ROLE_NAME}" 2>/dev/null || true
+fi
+
+###########################
 ## Uninstall LB Controller
 ###########################
 
@@ -265,7 +323,8 @@ else
     cb_dir="${SCRIPT_DIR}/codebuild-tf"
     if [[ -d "${cb_dir}" ]] && [[ -f "${cb_dir}/terraform.tfstate" ]]; then
         echo "  Destroying CodeBuild Terraform resources..."
-        terraform -chdir="${cb_dir}" destroy -auto-approve
+        terraform -chdir="${cb_dir}" destroy -auto-approve \
+            -var="source_s3_bucket=unused"
         echo "  CodeBuild resources destroyed."
     else
         echo "  CodeBuild Terraform state not found (already removed)."

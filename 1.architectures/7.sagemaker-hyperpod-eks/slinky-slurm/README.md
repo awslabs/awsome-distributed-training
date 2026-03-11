@@ -210,8 +210,8 @@ Check the available nodes:
 sinfo
 
 PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-hp-node      up   infinite      4   idle hp-node-[0-3]
-all*         up   infinite      4   idle hp-node-[0-3]
+slinky       up   infinite      4   idle slinky-[0-3]
+all*         up   infinite      4   idle slinky-[0-3]
 ```
 Note that in both scenarios (using 4 `ml.g5.8xlarge` instances or 2 `ml.p5.48xlarge`
 instances) we should see the same number of slurm compute nodes. When running on 4
@@ -221,48 +221,35 @@ to 8 available H100 GPUs and 32 EFA network interfaces.
 
 ---
 
-Verify FSx for Lustre and OpenZFS filesystem mounts on the login pod:
+Verify FSx for Lustre filesystem mounts on the login pod:
 
 ```
 df -h
 
-# Filesystem                                             Size  Used Avail Use% Mounted on
-# overlay                                                500G   30G  471G   6% /
-# tmpfs                                                   64M     0   64M   0% /dev
-# tmpfs                                                   63G     0   63G   0% /sys/fs/cgroup
-# 10.1.12.93@tcp:/7c5dpb4v                               1.2T  7.8M  1.2T   1% /fsx
-# fs-03221b7c7d3767607.fsx.us-west-2.amazonaws.com:/fsx   64G     0   64G   0% /home
-# tmpfs                                                  115G  4.0K  115G   1% /etc/slurm
-# /dev/nvme0n1p1                                         100G   23G   78G  23% /run
-# /dev/nvme1n1                                           500G   30G  471G   6% /etc/hostname
-# shm                                                     64M     0   64M   0% /dev/shm
-# tmpfs                                                  115G  4.0K  115G   1% /etc/sssd/sssd.conf
-# tmpfs                                                  115G   12K  115G   1% /etc/ssh/ssh_host_rsa_key
-# tmpfs                                                   63G     0   63G   0% /proc/acpi
-# tmpfs                                                   63G     0   63G   0% /sys/firmware
+# Filesystem                  Size  Used Avail Use% Mounted on
+# overlay                     500G  5.7G  495G   2% /
+# tmpfs                        64M     0   64M   0% /dev
+# 10.2.179.105@tcp:/vm4lxb4v  1.2T  7.5M  1.2T   1% /fsx
+# tmpfs                        59G  4.0K   59G   1% /etc/slurm
+# ...
 
 exit
 ```
 ---
 
-Verify FSx for Lustre and OpenZFS filesystem mounts on the compute node pods:
+Verify FSx for Lustre filesystem mounts on the compute node pods:
 
 ```
-kubectl -n slurm exec -it pod/slurm-compute-hp-node-0 -- bash --login
+kubectl -n slurm exec -it pod/slurm-worker-slinky-0 -- bash --login
 
 df -h
 
-# Filesystem                                             Size  Used Avail Use% Mounted on
-# overlay                                                500G   31G  470G   7% /
-# tmpfs                                                   64M     0   64M   0% /dev
-# tmpfs                                                   63G     0   63G   0% /sys/fs/cgroup
-# 10.1.12.93@tcp:/7c5dpb4v                               1.2T  7.5M  1.2T   1% /fsx
-# fs-03221b7c7d3767607.fsx.us-west-2.amazonaws.com:/fsx   64G     0   64G   0% /home
-# tmpfs                                                  115G  4.0K  115G   1% /etc/slurm
-# /dev/nvme0n1p1                                         100G   23G   78G  23% /run
-# /dev/nvme1n1                                           500G   31G  470G   7% /etc/hostname
-# shm                                                     64M     0   64M   0% /dev/shm
-# tmpfs                                                  115G     0  115G   0% /var/log/slurm
+# Filesystem                  Size  Used Avail Use% Mounted on
+# overlay                     500G   31G  470G   7% /
+# tmpfs                        64M     0   64M   0% /dev
+# 10.2.179.105@tcp:/vm4lxb4v  1.2T  7.5M  1.2T   1% /fsx
+# tmpfs                        59G  4.0K   59G   1% /etc/slurm
+# ...
 ```
 ---
 
@@ -351,17 +338,17 @@ Copy the modified sbatch file:
 export SLINKY_PATH=/fsx/awsome-distributed-training/1.architectures/7.sagemaker-hyperpod-eks/slinky-slurm
 
 # for g5 instances
-cp ${SLINKY_PATH}/g5/g5-llama2_7b-training.sbatch ./llama2_7b-training.sbatch
+cp ${SLINKY_PATH}/sbatch/fsdp/g5-llama2_7b-training.sbatch ./llama2_7b-training.sbatch
 
 # for p5 instances
-cp ${SLINKY_PATH}/p5/p5-llama2_7b-training.sbatch ./llama2_7b-training.sbatch
+cp ${SLINKY_PATH}/sbatch/fsdp/p5-llama2_7b-training.sbatch ./llama2_7b-training.sbatch
 ```
 ---
 Add your Hugging Face token to stream the
 [allenai/c4](https://huggingface.co/datasets/allenai/c4) dataset without throttling:
 ```
 NEW_TOKEN="your_new_token_here"
-sed -i "s/export HF_TOKEN=.*$/export HF_TOKEN=$NEW_TOKEN/" llama2_7b-training.sbatch
+sed -i "s/export HF_TOKEN=.*$/export HF_TOKEN=\"$NEW_TOKEN\"/" llama2_7b-training.sbatch
 ```
 
 ---
@@ -380,11 +367,11 @@ tail -f logs/llama2_7b-FSDP_${JOB_ID}.out
 ```
 ---
 
-Watch the error logs from `slurm-compute-hp-node-0`:
+Watch the error logs from `slurm-worker-slinky-0`:
 
 ```
 # from a new terminal window
-kubectl -n slurm exec -it pod/slurm-compute-hp-node-0 -- bash --login
+kubectl -n slurm exec -it pod/slurm-worker-slinky-0 -- bash --login
 
 cd /fsx/awsome-distributed-training/3.test_cases/pytorch/FSDP/slurm
 export JOB_ID=$(squeue -h -u root -o "%i" | head -1)
@@ -396,21 +383,21 @@ watch "grep 'Batch.*Loss' logs/llama2_7b-FSDP_${JOB_ID}.err"
 tail -f logs/llama2_7b-FSDP_${JOB_ID}.err | grep --line-buffered 'Batch.*Loss'
 ```
 
-Watch squeue from `slurm-compute-hp-node-1`:
+Watch squeue from `slurm-worker-slinky-1`:
 
 ```
 # from a new terminal window
-kubectl -n slurm exec -it pod/slurm-compute-hp-node-1 -- bash --login
+kubectl -n slurm exec -it pod/slurm-worker-slinky-1 -- bash --login
 
 # 1 second updates
 watch -n 1 squeue
 ```
 
-Watch checkpoints from `slurm-compute-hp-node-2`:
+Watch checkpoints from `slurm-worker-slinky-2`:
 
 ```
 # from a new terminal window
-kubectl -n slurm exec -it pod/slurm-compute-hp-node-2 -- bash --login
+kubectl -n slurm exec -it pod/slurm-worker-slinky-2 -- bash --login
 
 cd /fsx/awsome-distributed-training/3.test_cases/pytorch/FSDP/slurm
 
@@ -438,7 +425,7 @@ npm install -g bats               # cross-platform
 # One-time setup: install bats helper libraries
 bash tests/install_bats_libs.sh
 
-# Run all tests (89 tests across 4 test files)
+# Run all tests (96 tests across 4 test files)
 bats tests/
 
 # Run a specific test file

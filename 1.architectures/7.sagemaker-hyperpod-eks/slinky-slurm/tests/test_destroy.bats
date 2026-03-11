@@ -107,6 +107,24 @@ load 'helpers/setup'
     assert_output --partial 'AWSLoadBalancerControllerIAMPolicy_slinky'
 }
 
+@test "destroy.sh: defines EBS_CSI_IAM_ROLE_NAME" {
+    run grep 'EBS_CSI_IAM_ROLE_NAME=' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+    assert_output --partial 'AmazonEKS_EBS_CSI_DriverRole_slinky'
+}
+
+@test "destroy.sh: EBS CSI uninstall comes before LB Controller" {
+    local ebs_line lb_line
+    ebs_line=$(grep -n 'Uninstall EBS CSI' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    lb_line=$(grep -n 'Uninstall LB Controller' "${PROJECT_DIR}/destroy.sh" | head -1 | cut -d: -f1)
+    [[ "${ebs_line}" -lt "${lb_line}" ]]
+}
+
+@test "destroy.sh: deletes gp3 StorageClass" {
+    run grep 'storageclass gp3' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+}
+
 ###########################
 ## cleanup files ##########
 ###########################

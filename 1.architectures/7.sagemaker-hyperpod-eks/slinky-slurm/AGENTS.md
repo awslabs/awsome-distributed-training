@@ -8,9 +8,10 @@
 
 This project contains Helm values, Kubernetes manifests, Dockerfiles, Terraform/CloudFormation
 parameters, Slurm batch scripts, deployment automation scripts, and documentation. There is
-**no application source code** (no Python/Go/TS modules). Two hardware profiles exist under
-`g5/` and `p5/` directories with parallel file structures (sbatch files only —
-`params.json` and `custom.tfvars` have been consolidated to the project root).
+**no application source code** (no Python/Go/TS modules). Two hardware profiles (g5 and p5)
+have sbatch scripts organized by workload type under `sbatch/` (e.g., `sbatch/fsdp/`).
+Infrastructure config files (`params.json`, `custom.tfvars`) are consolidated at the
+project root with g5 defaults; `deploy.sh` conditionally overrides values for p5.
 
 Key automation scripts:
 - **`deploy.sh`** — Infrastructure deployment via CloudFormation or Terraform
@@ -103,10 +104,10 @@ Test structure:
 - `tests/test_deploy.bats` — 45 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
 - `tests/test_setup.bats` — 12 unit tests for `setup.sh` argument parsing, profile
   resolution, and template substitution
-- `tests/test_install.bats` — 10 unit tests for `install.sh` argument parsing, version
-  constants, install order, and `env_vars.sh` dependency validation
-- `tests/test_destroy.bats` — 7 unit tests for `destroy.sh` argument parsing, teardown
-  order, and IAM cleanup
+- `tests/test_install.bats` — 21 unit tests for `install.sh` argument parsing, version
+  constants, install order, `env_vars.sh` dependency validation, and EBS CSI/gp3 phases
+- `tests/test_destroy.bats` — 18 unit tests for `destroy.sh` argument parsing, teardown
+  order, IAM cleanup, and CodeBuild TF destroy
 - `tests/fixtures/` — Independent copies of `params.json`, `custom.tfvars`, and
   `slurm-values.yaml.template` for test isolation
 - `tests/helpers/setup.bash` — Common bats setup/teardown (loads helpers, creates temp dir,
@@ -242,14 +243,15 @@ Defined in `/.editorconfig`:
 - Tables for structured component descriptions
 - Link format: `[text](url)`
 
-## Keeping g5/ and p5/ in Sync
+## Keeping g5 and p5 Sbatch Files in Sync
 
-The `g5/` and `p5/` directories are structural mirrors. When modifying one, check whether the
-same change should be applied to the other. The `params.json` and `custom.tfvars` files have
-been consolidated to the project root (g5 defaults); `deploy.sh` conditionally overrides values
-for p5 at deploy time. Helm values files have been consolidated into
-`slurm-values.yaml.template` at the project root. The g5/ and p5/ directories now only contain
-sbatch scripts.
+Sbatch scripts are organized under `sbatch/` by workload type (e.g., `sbatch/fsdp/`), with
+hardware-profile prefixes (`g5-`, `p5-`). When modifying one profile's sbatch, check whether
+the same change should be applied to the other. The two files within each workload directory
+are structurally aligned (same section ordering, same environment variable blocks) so they
+diff cleanly. The `params.json` and `custom.tfvars` files have been consolidated to the
+project root (g5 defaults); `deploy.sh` conditionally overrides values for p5 at deploy time.
+Helm values files have been consolidated into `slurm-values.yaml.template` at the project root.
 
 Known intentional differences (handled by `resolve_helm_profile` and `resolve_node_profile`):
 

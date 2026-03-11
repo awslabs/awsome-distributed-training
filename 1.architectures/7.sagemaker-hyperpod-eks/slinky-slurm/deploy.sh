@@ -129,6 +129,7 @@ if [[ "${INFRA}" == "cfn" ]]; then
     check_command "jq" || exit 1
 elif [[ "${INFRA}" == "tf" ]]; then
     check_command "terraform" || exit 1
+    check_command "jq" || exit 1
 fi
 
 # Validate AWS credentials
@@ -377,6 +378,8 @@ deploy_tf() {
     if [[ -f "${outputs_script}" ]]; then
         echo "Extracting Terraform outputs..."
         chmod +x "${outputs_script}"
+        # Clear any existing env_vars.sh to avoid stale/duplicate exports
+        rm -f "${SCRIPT_DIR}/../terraform-modules/env_vars.sh"
         (cd "${SCRIPT_DIR}/../terraform-modules" && ./terraform_outputs.sh)
 
         local env_file="${SCRIPT_DIR}/../terraform-modules/env_vars.sh"
