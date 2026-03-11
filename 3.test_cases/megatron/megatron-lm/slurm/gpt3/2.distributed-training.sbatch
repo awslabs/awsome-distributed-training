@@ -14,6 +14,9 @@ set -ex;
 ###### User Variables #####
 ###########################
 
+GPUS_PER_NODE=8 # 4 for g5.12xlarge, 8 for p4de/p5/p5en
+NODES=${SLURM_JOB_NUM_NODES:-2}
+
 # configure TP/PP/GBS based on node count
 if [ $NODES -le 4 ]; then
     : "${TENSOR_PARALLEL:=4}"
@@ -22,7 +25,7 @@ if [ $NODES -le 4 ]; then
 elif [ $NODES -ge 8 ]; then
     : "${TENSOR_PARALLEL:=8}"
     : "${PIPELINE_PARALLEL:=4}"
-    TOTAL_GPUS=$((NODES * 8))
+    TOTAL_GPUS=$((NODES * GPUS_PER_NODE))
     DATA_PARALLEL=$((TOTAL_GPUS / (TENSOR_PARALLEL * PIPELINE_PARALLEL)))
     : "${GLOBAL_BATCH_SIZE:=$((DATA_PARALLEL * 576))}"
 fi
@@ -67,7 +70,7 @@ declare -a ARGS=(
 
 declare -a TORCHRUN_ARGS=(
     # change this to match the number of gpus per node:
-    --nproc_per_node=8
+    --nproc_per_node=$GPUS_PER_NODE
     --nnodes=$SLURM_JOB_NUM_NODES
     --rdzv_id=$SLURM_JOB_ID
     --rdzv_backend=c10d

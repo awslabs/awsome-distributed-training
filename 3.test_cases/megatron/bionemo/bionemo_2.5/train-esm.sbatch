@@ -36,8 +36,8 @@ srun -l "${ARGS[@]}"  python3 /workspace/bionemo2/sub-packages/bionemo-esm2/src/
     --valid-cluster-path ${DATA_DIR}/2024_03_sanity/valid_clusters.parquet \
     --valid-database-path ${DATA_DIR}/2024_03_sanity/validation.db \
     --precision="bf16-mixed" \
-    --num-gpus 8 \
-    --num-nodes 2 \
+    --num-gpus ${SLURM_GPUS_PER_NODE:-8} \
+    --num-nodes ${SLURM_JOB_NUM_NODES:-2} \
     --num-steps 100 \
     --val-check-interval 25 \
     --max-seq-length 1024 \
