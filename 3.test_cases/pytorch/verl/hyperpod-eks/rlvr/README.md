@@ -14,16 +14,15 @@ This repository provides a complete setup for running reinforcement learning fro
 
 | Instance | GPUs | Model | Nodes | Key Settings | Status |
 |----------|------|-------|-------|-------------|--------|
-| p5en.48xlarge | 8 x H200 80 GB | Qwen3-8B | 4 | FSDP1, TP=2, ref_offload only | Tested |
+| p5en.48xlarge | 8 x H200 141 GB | Qwen3-8B | 4 | FSDP1, TP=2, ref_offload only | Tested |
 | g5.12xlarge | 4 x A10G 24 GB | gpt-oss-20b (MoE) | 3 workers + 1 head | FSDP2, full offload, TP=4, bf16 | Tested |
-| p4de.24xlarge | 8 x A100 80 GB | Qwen3-8B | 4 | FSDP1, TP=2 | Untested |
-| g6e.12xlarge | 4 x L40S 48 GB | — | — | — | Untested |
 
 > **Running on a different instance type?** See the
 > [Instance Compatibility Guide](../../../../../docs/instance-compatibility.md)
 > for the parameter changes needed when moving between instance families, and
 > the [instance profiles](../../../../../docs/instance-profiles/) for
 > per-instance hardware details and NCCL/EFA settings.
+> For untested instance types, check the guide for parameter adjustment recommendations.
 >
 > **g5 users**: Running on g5.12xlarge (A10G 24 GB) requires significant
 > parameter changes including FSDP2 with full CPU offloading, TP=4,

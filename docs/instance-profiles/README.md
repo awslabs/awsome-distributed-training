@@ -11,7 +11,7 @@ EC2 instance family used in this repository's test cases.
 | [g6e.md](g6e.md) | L40S | 48 GB | No | 1 | Mid-range development/testing |
 | [p4de.md](p4de.md) | A100 | 80 GB | Yes | 4 | Production training |
 | [p5.md](p5.md) | H100 | 80 GB | Yes | 32 | Production training |
-| [p5en.md](p5en.md) | H200 | 80 GB | Yes | 32 | Primary target (most test cases) |
+| [p5en.md](p5en.md) | H200 | 141 GB | Yes | 32 | Primary target (most test cases) |
 
 ## AWS Trainium Instances
 

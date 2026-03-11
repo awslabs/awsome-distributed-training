@@ -6,11 +6,11 @@
 |----------|-------------|--------|-------|
 | trn1.32xlarge | 32 | Tested | |
 | trn1n.32xlarge | 32 | Tested | |
-| trn2.48xlarge | 64 | Untested | Expected to work |
 
 > See the [Instance Compatibility Guide](../../../../../docs/instance-compatibility.md)
 > and [Trainium instance profile](../../../../../docs/instance-profiles/trn1.md)
 > for details on Trainium hardware.
+> For untested instance types, check the guide for parameter adjustment recommendations.
 
 In this section, we showcase how to pre-train Llama3-8B, Llama3 8B model using Trn1.32xlarge/Trn1n.32xlarge instances using the Neuron Distributed library. To train the LLama model in this example, we will apply the following optimizations using the Neuron Distributed library:
 

@@ -4,7 +4,7 @@ This guide helps you choose the right EC2 instance type for each test case
 in this repository and understand the parameter changes required when moving
 between instance families.
 
-Most test cases are developed and tested on **p5en.48xlarge** (8 x H200 80GB).
+Most test cases are developed and tested on **p5en.48xlarge** (8 x H200 141GB).
 Running them on smaller or differently-configured instances (g5, p4de, g6e)
 requires adjustments to FSDP strategy, offloading, tensor parallelism, NCCL
 flags, and checkpoint frequency. This document captures those differences
@@ -14,7 +14,7 @@ systematically.
 
 | Instance | GPU | VRAM | GPUs | GPUDirect RDMA | EFA | NVLink | Node RAM | Notes |
 |----------|-----|------|------|----------------|-----|--------|----------|-------|
-| [p5en.48xlarge](instance-profiles/p5en.md) | H200 | 80 GB | 8 | Yes | 32 | NVSwitch | ~700 Gi | Current primary target |
+| [p5en.48xlarge](instance-profiles/p5en.md) | H200 | 141 GB | 8 | Yes | 32 | NVSwitch | ~700 Gi | Current primary target |
 | [p5.48xlarge](instance-profiles/p5.md) | H100 | 80 GB | 8 | Yes | 32 | NVSwitch | ~700 Gi | Same profile as p5en for most workloads |
 | [p4de.24xlarge](instance-profiles/p4de.md) | A100 | 80 GB | 8 | Yes | 4 | NVSwitch | ~1100 Gi | Fewer EFA adapters than p5 |
 | [g5.12xlarge](instance-profiles/g5.md) | A10G | 24 GB | 4 | No | 1 | None | ~168 Gi | Requires aggressive offloading for >10B models |
@@ -31,7 +31,7 @@ dimensions that drive parameter changes:
 
 | # | Dimension | Why It Matters | Example Impact |
 |---|-----------|---------------|----------------|
-| 1 | **GPU VRAM** | Determines FSDP strategy, offloading needs, TP degree, batch sizes | A10G 24 GB needs FSDP2 + full offload; H200 80 GB does not |
+| 1 | **GPU VRAM** | Determines FSDP strategy, offloading needs, TP degree, batch sizes | A10G 24 GB needs FSDP2 + full offload; H200 141 GB does not |
 | 2 | **GPUDirect RDMA** | Controls NCCL transport protocol and EFA device flags | g5: `RDMA=0, PROTO=simple`; p5: `RDMA=1, PROTO=default` |
 | 3 | **EFA Count** | Inter-node bandwidth; affects multi-node scaling efficiency | g5: 1 EFA adapter; p5en: 32 EFA adapters |
 | 4 | **NVLink Topology** | Intra-node GPU-to-GPU bandwidth; affects TP efficiency | g5: no NVLink (PCIe only); p5: NVSwitch full-mesh |
@@ -41,47 +41,46 @@ dimensions that drive parameter changes:
 ## Test Case Compatibility Matrix
 
 The table below shows which instance types have been tested with each test case.
-Status key: **Tested** = validated end-to-end, **Untested** = expected to work
-with the listed profile but not yet validated, **N/A** = not applicable
-(e.g., Neuron test cases on NVIDIA instances).
+Status key: **Tested** = validated end-to-end, **—** = not yet validated,
+**N/A** = not applicable (e.g., Neuron test cases on NVIDIA instances).
 
 ### PyTorch Test Cases
 
 | Test Case | p5en.48xl (H200) | p5.48xl (H100) | p4de.24xl (A100) | g5.12xl (A10G) | g6e.12xl (L40S) | trn1/trn2 |
 |-----------|:-:|:-:|:-:|:-:|:-:|:-:|
-| [FSDP](../3.test_cases/pytorch/FSDP/) | Tested | Tested | Tested | Tested | Untested | N/A |
-| [veRL GRPO](../3.test_cases/pytorch/verl/) | Tested | Untested | Untested | Tested | Untested | N/A |
-| [DDP](../3.test_cases/pytorch/ddp/) | Untested | Untested | Untested | Untested | Untested | N/A |
-| [DeepSpeed](../3.test_cases/pytorch/deepspeed/) | Untested | Untested | Untested | Untested | Untested | N/A |
-| [torchtitan](../3.test_cases/pytorch/torchtitan/) | Untested | Untested | Untested | Untested | Untested | N/A |
-| [TRL](../3.test_cases/pytorch/trl/) | Untested | Untested | Untested | Untested | Untested | N/A |
-| [distillation](../3.test_cases/pytorch/distillation/) | Tested | Untested | Tested | Untested | Untested | N/A |
-| [nanoVLM](../3.test_cases/pytorch/nanoVLM/) | Untested | Untested | Untested | Tested | Untested | N/A |
-| [MosaicML Composer](../3.test_cases/pytorch/mosaicml-composer/) | Untested | Untested | Untested | Untested | Untested | N/A |
-| [Picotron](../3.test_cases/pytorch/picotron/) | Untested | Untested | Untested | Untested | Untested | N/A |
+| [FSDP](../3.test_cases/pytorch/FSDP/) | Tested | Tested | Tested | Tested | — | N/A |
+| [veRL GRPO](../3.test_cases/pytorch/verl/) | Tested | — | — | Tested | — | N/A |
+| [DDP](../3.test_cases/pytorch/ddp/) | — | — | — | — | — | N/A |
+| [DeepSpeed](../3.test_cases/pytorch/deepspeed/) | — | — | — | — | — | N/A |
+| [torchtitan](../3.test_cases/pytorch/torchtitan/) | — | — | — | — | — | N/A |
+| [TRL](../3.test_cases/pytorch/trl/) | — | — | — | — | — | N/A |
+| [distillation](../3.test_cases/pytorch/distillation/) | Tested | — | Tested | — | — | N/A |
+| [nanoVLM](../3.test_cases/pytorch/nanoVLM/) | — | — | — | Tested | — | N/A |
+| [MosaicML Composer](../3.test_cases/pytorch/mosaicml-composer/) | — | — | — | — | — | N/A |
+| [Picotron](../3.test_cases/pytorch/picotron/) | — | — | — | — | — | N/A |
 
 ### Megatron Test Cases
 
 | Test Case | p5en.48xl (H200) | p5.48xl (H100) | p4de.24xl (A100) | g5.12xl (A10G) | g6e.12xl (L40S) | trn1/trn2 |
 |-----------|:-:|:-:|:-:|:-:|:-:|:-:|
-| [NeMo 2.0](../3.test_cases/megatron/nemo/) | Tested | Tested | Untested | Untested | Untested | N/A |
-| [NeMo 1.0](../3.test_cases/megatron/nemo1.0/) | Untested | Untested | Tested | Untested | Untested | N/A |
-| [Megatron-LM](../3.test_cases/megatron/megatron-lm/) | Untested | Untested | Untested | Untested | Untested | N/A |
-| [BioNeMo](../3.test_cases/megatron/bionemo/) | Untested | Untested | Tested | Untested | Untested | N/A |
+| [NeMo 2.0](../3.test_cases/megatron/nemo/) | Tested | Tested | — | — | — | N/A |
+| [NeMo 1.0](../3.test_cases/megatron/nemo1.0/) | — | — | Tested | — | — | N/A |
+| [Megatron-LM](../3.test_cases/megatron/megatron-lm/) | — | — | — | — | — | N/A |
+| [BioNeMo](../3.test_cases/megatron/bionemo/) | — | — | Tested | — | — | N/A |
 
 ### Neuron Test Cases
 
 | Test Case | trn1.32xl | trn1n.32xl | trn2.48xl | trn2.3xl | NVIDIA |
 |-----------|:-:|:-:|:-:|:-:|:-:|
 | [optimum-neuron](../3.test_cases/pytorch/optimum-neuron/) | Tested | Tested | Tested | Tested | N/A |
-| [neuronx-distributed](../3.test_cases/pytorch/neuronx-distributed/) | Untested | Untested | Untested | Untested | N/A |
+| [neuronx-distributed](../3.test_cases/pytorch/neuronx-distributed/) | — | — | — | — | N/A |
 
 ### Other Test Cases
 
 | Test Case | p5en.48xl (H200) | p5.48xl (H100) | p4de.24xl (A100) | g5.12xl (A10G) |
 |-----------|:-:|:-:|:-:|:-:|
-| [JAX/Paxml](../3.test_cases/jax/) | Untested | Untested | Untested | Untested |
-| [ESM2](../3.test_cases/23.SMHP-esm2/) | Untested | Untested | Untested | Tested |
+| [JAX/Paxml](../3.test_cases/jax/) | — | — | — | — |
+| [ESM2](../3.test_cases/23.SMHP-esm2/) | — | — | — | Tested |
 
 ## Common Parameter Adjustments by Instance Type
 
@@ -181,7 +180,3 @@ When you validate a test case on a new instance type:
 3. If you needed new parameters, document them in the per-test-case README
 4. Consider adding an [instance profile](instance-profiles/) if the instance
    family is not yet documented
-
-See the [implementation plan](plans/instance-compatibility-framework.md) for
-the full roadmap including parameterized config profiles (Tier 2) and
-automated multi-instance CI validation (Tier 3).

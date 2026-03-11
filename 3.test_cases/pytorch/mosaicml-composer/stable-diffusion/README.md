@@ -6,11 +6,10 @@
 |----------|------|--------|-------|
 | p5.48xlarge | 8 x H100 80 GB | Tested | Scaling benchmarks available below |
 | p4de.24xlarge | 8 x A100 80 GB | Tested | Performance comparison available below |
-| p5en.48xlarge | 8 x H200 80 GB | Untested | Expected to work |
-| g5.12xlarge | 4 x A10G 24 GB | Untested | May need reduced batch size |
 
 > See the [Instance Compatibility Guide](../../../../docs/instance-compatibility.md)
 > for parameter adjustments needed across instance types.
+> For untested instance types, check the guide for parameter adjustment recommendations.
 
 We will follow MosaicML's stable diffusion benchmarking scripts provided [here](https://github.com/mosaicml/diffusion-benchmark/tree/main). It uses the `'stabilityai/stable-diffusion-2-base'` model. You can check the number of parameters by executing:
 

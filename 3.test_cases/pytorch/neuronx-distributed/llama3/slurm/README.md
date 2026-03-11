@@ -5,12 +5,11 @@
 | Instance | NeuronCores | Status | Notes |
 |----------|-------------|--------|-------|
 | trn1.32xlarge | 32 | Tested | 16 nodes used in example |
-| trn1n.32xlarge | 32 | Untested | Expected to work (more EFA adapters) |
-| trn2.48xlarge | 64 | Untested | Expected to work |
 
 > See the [Instance Compatibility Guide](../../../../../docs/instance-compatibility.md)
 > and [Trainium instance profile](../../../../../docs/instance-profiles/trn1.md)
 > for details on Trainium hardware.
+> For untested instance types, check the guide for parameter adjustment recommendations.
 
 ## Prerequisites
  

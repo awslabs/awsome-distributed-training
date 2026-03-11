@@ -18,15 +18,13 @@ This walkthrough demonstrates how to set up and run large language model (LLM) k
 
 | Instance | GPUs | Status | Notes |
 |----------|------|--------|-------|
-| p5en.48xlarge | 8 x H200 80 GB | Tested | Primary target |
+| p5en.48xlarge | 8 x H200 141 GB | Tested | Primary target |
 | p5.48xlarge | 8 x H100 80 GB | Tested | |
 | p4d.24xlarge | 8 x A100 40 GB | Tested | |
-| p4de.24xlarge | 8 x A100 80 GB | Untested | Expected to work |
-| g5.12xlarge | 4 x A10G 24 GB | Untested | May need smaller teacher/student models |
-| g6e.12xlarge | 4 x L40S 48 GB | Untested | |
 
 > See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
 > for parameter adjustments needed across instance types.
+> For untested instance types, check the guide for parameter adjustment recommendations.
 
 ## Getting Started
 

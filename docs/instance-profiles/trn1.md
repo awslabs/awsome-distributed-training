@@ -17,14 +17,14 @@
 ## Key Characteristics
 
 - **Neuron SDK only**: These instances use the AWS Neuron compiler and
-  runtime, not CUDA. NVIDIA-targeted test cases are **not applicable**
+  runtime, not CUDA. NVIDIA-targeted configurations are **not applicable**
 - **Different software stack**: Uses `neuronx-distributed`, `optimum-neuron`,
   or `neuronx-nemo-megatron` instead of PyTorch FSDP / Megatron-LM
 - **NeuronLink**: Intra-node device-to-device communication (analogous to
   NVLink for NVIDIA)
 - **EFA**: Inter-node communication; trn1n and trn2 have more adapters
 - **Compiler-driven optimization**: Memory optimization is handled primarily
-  by the Neuron compiler rather than manual FSDP/offloading configuration
+  by the Neuron compiler rather than manual configuration
 
 ## Required Settings
 
@@ -40,35 +40,10 @@ export FI_EFA_USE_DEVICE_RDMA=1  # Trainium supports EFA direct
 
 ## Differences from NVIDIA Instances
 
-Trainium instances use a fundamentally different software stack. The
-parameter adjustment patterns described in the
-[main compatibility guide](../instance-compatibility.md) (FSDP strategy,
-NCCL settings, etc.) do not apply. Instead:
+Trainium instances use a fundamentally different software stack:
 
 | NVIDIA Concept | Trainium Equivalent |
 |----------------|-------------------|
-| FSDP / DeepSpeed | `neuronx-distributed` tensor/pipeline parallelism |
 | NCCL | `xla` collective communication |
 | CUDA graphs | Neuron compiler graph extraction |
 | `nvidia-smi` | `neuron-top`, `neuron-monitor` |
-| TP / PP configuration | Set via Neuron distributed config |
-
-## Resource Requests (Kubernetes)
-
-```yaml
-# trn1.32xlarge — 16 Neuron devices
-resources:
-  limits:
-    aws.amazon.com/neuron: 16
-    vpc.amazonaws.com/efa: 8
-  requests:
-    memory: "400Gi"
-    cpu: "120"
-```
-
-## Tested Workloads
-
-| Test Case | Model | Instance | Status | Notes |
-|-----------|-------|----------|--------|-------|
-| optimum-neuron | Various | trn1.32xl, trn1n, trn2.48xl, trn2.3xl | Tested | Multiple instance types validated |
-| neuronx-distributed | Various | Various | Untested | Expected to work |
