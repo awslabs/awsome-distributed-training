@@ -17,7 +17,6 @@ This configuration requires 8 GPUs total (2 x 2 x 2 = 8), which can be found in 
 Before running this example, you need to:
 1. Build the Picotron container image following the guidance in [here](..)
 2. Have an EC2 instance with 8 GPUs (e.g., p5.48xlarge)
-3. Build the `picotron` container image following the guidance in [here](..)
 
 ### How to Run the Distributed Training Job
 
