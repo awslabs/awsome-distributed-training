@@ -7,29 +7,42 @@
 # in tests for unit testing.
 
 ###########################
-## Node Type Resolution ###
+## Instance Profile Res ###
 ###########################
 
-# resolve_node_profile <node_type>
-# Sets ACCEL_INSTANCE_TYPE and ACCEL_INSTANCE_COUNT based on node type.
-# Returns 0 on success, 1 on invalid node type.
-resolve_node_profile() {
-    local node_type="$1"
+# resolve_instance_profile <instance_type> [instance_count]
+# Validates the SageMaker instance type via the EC2 API and sets
+# ACCEL_INSTANCE_TYPE and ACCEL_INSTANCE_COUNT.
+# The instance_type must start with "ml." (SageMaker convention).
+# Returns 0 on success, 1 on invalid/missing type.
+resolve_instance_profile() {
+    local instance_type="$1"
+    local instance_count="${2:-4}"
 
-    case "${node_type}" in
-        g5)
-            ACCEL_INSTANCE_TYPE="ml.g5.8xlarge"
-            ACCEL_INSTANCE_COUNT=4
-            ;;
-        p5)
-            ACCEL_INSTANCE_TYPE="ml.p5.48xlarge"
-            ACCEL_INSTANCE_COUNT=2
-            ;;
-        *)
-            echo "Error: --node-type must be 'g5' or 'p5' (got: ${node_type})"
-            return 1
-            ;;
-    esac
+    if [[ -z "${instance_type}" ]]; then
+        echo "Error: --instance-type is required"
+        return 1
+    fi
+
+    # Validate ml. prefix
+    if [[ "${instance_type}" != ml.* ]]; then
+        echo "Error: Instance type must start with 'ml.' (got: ${instance_type})"
+        return 1
+    fi
+
+    # Strip ml. prefix for EC2 API lookup
+    local ec2_type="${instance_type#ml.}"
+
+    if ! aws ec2 describe-instance-types \
+        --instance-types "${ec2_type}" &>/dev/null; then
+        echo "Error: '${instance_type}' is not a valid instance type."
+        echo "  Verify the type exists in your region with:"
+        echo "  aws ec2 describe-instance-types --instance-types ${ec2_type}"
+        return 1
+    fi
+
+    ACCEL_INSTANCE_TYPE="${instance_type}"
+    ACCEL_INSTANCE_COUNT="${instance_count}"
     return 0
 }
 
@@ -37,35 +50,148 @@ resolve_node_profile() {
 ## Helm Profile Resolution
 ###########################
 
-# resolve_helm_profile <node_type>
-# Sets Helm template variables for the slurm-values.yaml.template.
-# Returns 0 on success, 1 on invalid node type.
+# resolve_helm_profile <instance_type> [instance_count]
+# Queries the EC2 API for GPU/EFA specs and sets Helm template variables
+# for slurm-values.yaml.template.
+# Returns 0 on success, 1 on failure.
 resolve_helm_profile() {
-    local node_type="$1"
+    local instance_type="$1"
+    local instance_count="${2:-4}"
 
+    if [[ -z "${instance_type}" ]]; then
+        echo "Error: --instance-type is required"
+        return 1
+    fi
+
+    # Validate ml. prefix
+    if [[ "${instance_type}" != ml.* ]]; then
+        echo "Error: Instance type must start with 'ml.' (got: ${instance_type})"
+        return 1
+    fi
+
+    # Strip ml. prefix for EC2 API lookup
+    local ec2_type="${instance_type#ml.}"
+
+    local info
+    if ! info=$(aws ec2 describe-instance-types \
+        --instance-types "${ec2_type}" \
+        --query 'InstanceTypes[0]' --output json 2>/dev/null); then
+        echo "Error: '${instance_type}' is not a valid instance type."
+        return 1
+    fi
+
+    # Check for Neuron devices (Trainium/Inferentia) — not supported
+    local neuron_count
+    neuron_count=$(echo "${info}" | jq -r '.NeuronInfo.NeuronDevices[0].Count // 0')
+    if [[ "${neuron_count}" != "0" ]]; then
+        echo "Error: Neuron/Trainium instances are not currently supported for Slurm"
+        echo "  GRES configuration. GPU-based instances are required."
+        echo "  Got: ${instance_type} (${neuron_count} Neuron devices detected)"
+        return 1
+    fi
+
+    # Extract GPU info
+    GPU_COUNT=$(echo "${info}" | jq -r '.GpuInfo.Gpus[0].Count // 0')
+
+    # Reject CPU-only instances (no GPU, no accelerator)
+    if [[ "${GPU_COUNT}" == "0" ]]; then
+        echo "Error: '${instance_type}' has no GPUs. GPU-based instances are"
+        echo "  required for the accelerated instance group."
+        return 1
+    fi
+
+    local gpu_model
+    gpu_model=$(echo "${info}" | jq -r '.GpuInfo.Gpus[0].Name // "gpu"')
+
+    # Build GRES string: gpu:<model_lowercase>:<count>
+    GPU_GRES="gpu:$(echo "${gpu_model}" | tr '[:upper:]' '[:lower:]'):${GPU_COUNT}"
+
+    # Extract EFA info
+    local efa_supported
+    efa_supported=$(echo "${info}" | jq -r '.NetworkInfo.EfaSupported // false')
+    EFA_COUNT=0
+    if [[ "${efa_supported}" == "true" ]]; then
+        EFA_COUNT=$(echo "${info}" | jq -r '.NetworkInfo.EfaInfo.MaximumEfaInterfaces // 0')
+    fi
+
+    HELM_ACCEL_INSTANCE_TYPE="${instance_type}"
+    REPLICAS="${instance_count}"
     MGMT_INSTANCE_TYPE="ml.m5.4xlarge"
     PVC_NAME="fsx-claim"
+    return 0
+}
 
-    case "${node_type}" in
-        g5)
-            HELM_ACCEL_INSTANCE_TYPE="ml.g5.8xlarge"
-            GPU_COUNT=1
-            EFA_COUNT=1
-            GPU_GRES="gpu:a10g:1"
-            REPLICAS=4
-            ;;
-        p5)
-            HELM_ACCEL_INSTANCE_TYPE="ml.p5.48xlarge"
-            GPU_COUNT=8
-            EFA_COUNT=32
-            GPU_GRES="gpu:h100:8"
-            REPLICAS=2
-            ;;
-        *)
-            echo "Error: --node-type must be 'g5' or 'p5' (got: ${node_type})"
-            return 1
-            ;;
-    esac
+###########################
+## Training Plan Resolve ##
+###########################
+
+# resolve_training_plan <plan_name> <region>
+# Validates a SageMaker Training Plan exists, resolves its ARN and AZ ID.
+# Sets TRAINING_PLAN_ARN and TRAINING_PLAN_AZ_ID.
+# Returns 0 on success, 1 on failure.
+resolve_training_plan() {
+    local plan_name="$1"
+    local region="$2"
+
+    if [[ -z "${plan_name}" ]]; then
+        echo "Error: --training-plan requires a plan name"
+        return 1
+    fi
+
+    echo "Resolving training plan '${plan_name}'..."
+
+    local plan_info
+    if ! plan_info=$(aws sagemaker describe-training-plan \
+        --training-plan-name "${plan_name}" \
+        --region "${region}" 2>&1); then
+        echo "Error: Training plan '${plan_name}' not found in region ${region}."
+        echo "  ${plan_info}"
+        return 1
+    fi
+
+    # Extract ARN
+    TRAINING_PLAN_ARN=$(echo "${plan_info}" | jq -r '.TrainingPlanArn')
+    if [[ -z "${TRAINING_PLAN_ARN}" || "${TRAINING_PLAN_ARN}" == "null" ]]; then
+        echo "Error: Could not resolve ARN for training plan '${plan_name}'."
+        return 1
+    fi
+
+    # Check status
+    local status
+    status=$(echo "${plan_info}" | jq -r '.Status')
+    echo "  ARN: ${TRAINING_PLAN_ARN}"
+    echo "  Status: ${status}"
+
+    if [[ "${status}" == "Failed" ]]; then
+        echo "Error: Training plan '${plan_name}' has status 'Failed'."
+        return 1
+    fi
+    if [[ "${status}" == "Expired" ]]; then
+        echo "  WARNING: Training plan '${plan_name}' has status 'Expired'."
+    fi
+
+    # Extract AZ name from first reserved capacity
+    local az_name
+    az_name=$(echo "${plan_info}" | jq -r \
+        '.ReservedCapacitySummaries[0].AvailabilityZone // empty')
+    if [[ -z "${az_name}" ]]; then
+        echo "Error: Training plan '${plan_name}' has no reserved capacity."
+        return 1
+    fi
+
+    # Resolve AZ name to AZ ID
+    local az_id
+    if ! az_id=$(aws ec2 describe-availability-zones \
+        --zone-names "${az_name}" \
+        --region "${region}" \
+        --query 'AvailabilityZones[0].ZoneId' --output text 2>&1); then
+        echo "Error: Could not resolve AZ ID for '${az_name}'."
+        echo "  ${az_id}"
+        return 1
+    fi
+
+    TRAINING_PLAN_AZ_ID="${az_id}"
+    echo "  AZ: ${az_name} (${TRAINING_PLAN_AZ_ID})"
     return 0
 }
 
@@ -106,7 +232,7 @@ validate_az_id() {
 ## CFN Param Resolution ###
 ###########################
 
-# resolve_cfn_params <params_file> <az_ids> <az_id> <accel_type> <accel_count>
+# resolve_cfn_params <params_file> <az_ids> <az_id> <accel_type> <accel_count> [training_plan_arn]
 # Runs the jq filter to substitute AZ IDs and instance overrides.
 # Outputs resolved JSON to stdout.
 # Returns 0 on success, 1 on failure.
@@ -116,6 +242,7 @@ resolve_cfn_params() {
     local az_id="$3"
     local accel_type="$4"
     local accel_count="$5"
+    local training_plan_arn="${6:-}"
 
     if [[ ! -f "${params_file}" ]]; then
         echo "Error: Parameters file not found: ${params_file}" >&2
@@ -127,6 +254,7 @@ resolve_cfn_params() {
         --arg az_id "${az_id}" \
         --arg accel_type "${accel_type}" \
         --argjson accel_count "${accel_count}" \
+        --arg training_plan_arn "${training_plan_arn}" \
         '
         map(
             if .ParameterKey == "AvailabilityZoneIds" then
@@ -140,7 +268,11 @@ resolve_cfn_params() {
                         .TargetAvailabilityZoneId = $az_id |
                         if .InstanceGroupName == "accelerated-instance-group-1" then
                             .InstanceType = $accel_type |
-                            .InstanceCount = $accel_count
+                            .InstanceCount = $accel_count |
+                            if $training_plan_arn != "" then
+                                .TrainingPlanArn = $training_plan_arn
+                            else .
+                            end
                         else .
                         end
                     ) |
@@ -156,8 +288,9 @@ resolve_cfn_params() {
 ## TF Var Resolution ######
 ###########################
 
-# resolve_tf_vars <target_file> <region> <az_id> <accel_type> <accel_count> <node_type>
+# resolve_tf_vars <target_file> <region> <az_id> <accel_type> <accel_count> [training_plan_arn]
 # Patches a tfvars file in-place with region, AZ, and instance overrides.
+# Always patches the first instance group's type and count.
 # The target file must already exist (copied from source before calling).
 # Returns 0 on success, 1 on failure.
 resolve_tf_vars() {
@@ -166,7 +299,7 @@ resolve_tf_vars() {
     local az_id="$3"
     local accel_type="$4"
     local accel_count="$5"
-    local node_type="$6"
+    local training_plan_arn="${6:-}"
 
     if [[ ! -f "${target_file}" ]]; then
         echo "Error: tfvars file not found: ${target_file}" >&2
@@ -183,31 +316,42 @@ resolve_tf_vars() {
         "s|availability_zone_id.*=.*|availability_zone_id      = \"${az_id}\",|" \
         "${target_file}"
 
-    # Apply p5 overrides: patch the first instance group's type and count.
-    # NOTE: GNU sed supports "0,/pattern/" for first-occurrence-only, but
-    # macOS (BSD) sed does not. Use awk for portability.
-    if [[ "${node_type}" == "p5" ]]; then
-        # Replace the first occurrence of the g5 instance type
-        awk -v new_type="${accel_type}" '
-            /instance_type.*=.*"ml\.g5\.8xlarge"/ && !type_done {
-                sub(/"ml\.g5\.8xlarge"/, "\"" new_type "\"")
-                type_done = 1
-            }
-            { print }
-        ' "${target_file}" > "${target_file}.tmp" && mv "${target_file}.tmp" "${target_file}"
+    # Patch the first instance group's instance_type.
+    # Uses awk to replace only the first occurrence of instance_type within
+    # the instance_groups block, regardless of its current value.
+    awk -v new_type="${accel_type}" '
+        /instance_type[[:space:]]*=/ && !type_done {
+            sub(/=.*/, "= \"" new_type "\",")
+            type_done = 1
+        }
+        { print }
+    ' "${target_file}" > "${target_file}.tmp" && mv "${target_file}.tmp" "${target_file}"
 
-        # Replace the first occurrence of instance_count = 4
-        awk -v new_count="${accel_count}" '
-            /instance_count.*=.*4/ && !count_done {
-                sub(/=.*/, "= " new_count ",")
-                count_done = 1
-            }
-            { print }
-        ' "${target_file}" > "${target_file}.tmp" && mv "${target_file}.tmp" "${target_file}"
-    fi
+    # Patch the first instance group's instance_count.
+    awk -v new_count="${accel_count}" '
+        /instance_count[[:space:]]*=/ && !count_done {
+            sub(/=.*/, "= " new_count ",")
+            count_done = 1
+        }
+        { print }
+    ' "${target_file}" > "${target_file}.tmp" && mv "${target_file}.tmp" "${target_file}"
 
     # Clean up sed backup files
     rm -f "${target_file}.bak"
+
+    # Inject training_plan_arn into the first instance group if provided
+    if [[ -n "${training_plan_arn}" ]]; then
+        awk -v plan_arn="${training_plan_arn}" '
+            /lifecycle_script/ && !plan_done {
+                print
+                print "    training_plan_arn         = \"" plan_arn "\""
+                plan_done = 1
+                next
+            }
+            { print }
+        ' "${target_file}" > "${target_file}.tmp" \
+            && mv "${target_file}.tmp" "${target_file}"
+    fi
 
     return 0
 }

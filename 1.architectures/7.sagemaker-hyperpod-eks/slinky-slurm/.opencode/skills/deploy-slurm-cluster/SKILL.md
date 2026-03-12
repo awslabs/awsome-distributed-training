@@ -48,13 +48,13 @@ See the `deployment-preflight` skill for detailed prerequisite validation.
 
 ```bash
 # Build image via CodeBuild + install cluster (g5 via CloudFormation)
-bash install.sh --node-type g5 --infra cfn
+bash install.sh --instance-type ml.g5.8xlarge --infra cfn
 
 # Build image locally + install cluster (p5 via Terraform)
-bash install.sh --node-type p5 --infra tf --local-build
+bash install.sh --instance-type ml.p5.48xlarge --instance-count 2 --infra tf --local-build
 
 # Skip image build (image already in ECR) + install cluster
-bash install.sh --node-type g5 --infra cfn --skip-build
+bash install.sh --instance-type ml.g5.8xlarge --infra cfn --skip-build
 ```
 
 **Skip setup (slurm-values.yaml already exists):**
@@ -98,7 +98,7 @@ Calls `setup.sh` with pass-through flags:
 bash setup.sh ${SETUP_ARGS}
 ```
 
-All `--node-type`, `--infra`, `--repo-name`, `--tag`, `--local-build`,
+All `--instance-type`, `--instance-count`, `--infra`, `--repo-name`, `--tag`, `--local-build`,
 `--skip-build`, and `--region` flags are passed through to `setup.sh`.
 
 If `--skip-setup` is specified, verifies `slurm-values.yaml` exists.
@@ -257,7 +257,8 @@ Optional:
   --help                    Show help
 
 Options passed through to setup.sh:
-  --node-type <g5|p5>       Instance profile
+  --instance-type <type>    SageMaker instance type (e.g., ml.g5.8xlarge, ml.p5.48xlarge)
+  --instance-count <N>      Number of compute node instances (default: 4)
   --infra <cfn|tf>          Infrastructure method for CodeBuild stack
   --repo-name <name>        ECR repository name
   --tag <tag>               Image tag

@@ -36,14 +36,16 @@ See the `deployment-preflight` skill for detailed prerequisite validation.
 
 ## Steps
 
-### Step 1: Choose node type and infrastructure backend
+### Step 1: Choose instance type and infrastructure backend
 
-Two hardware profiles are available:
+Any SageMaker-supported GPU instance type can be used. GPU count, model,
+and EFA interfaces are auto-discovered via the EC2 API. Two common
+configurations:
 
-| Profile | Instance Type | Count | GPUs | EFA |
-|---------|-------------- |-------|------|-----|
-| `g5` | `ml.g5.8xlarge` | 4 | 1 per node | 1 per node |
-| `p5` | `ml.p5.48xlarge` | 2 | 8 per node | 32 per node |
+| Instance Type | Count | GPUs | EFA |
+|---------------|-------|------|-----|
+| `ml.g5.8xlarge` (default) | 4 | 1 A10G per node | 1 per node |
+| `ml.p5.48xlarge` | 2 | 8 H100 per node | 32 per node |
 
 ### Step 2: Run deploy.sh
 
@@ -51,23 +53,23 @@ Two hardware profiles are available:
 
 ```bash
 # Deploy g5 in us-west-2 (defaults)
-bash deploy.sh --node-type g5 --infra cfn
+bash deploy.sh --instance-type ml.g5.8xlarge --infra cfn
 
 # Deploy p5 in us-east-1 with a specific AZ
-bash deploy.sh --node-type p5 --infra cfn --region us-east-1 --az-id use1-az2
+bash deploy.sh --instance-type ml.p5.48xlarge --instance-count 2 --infra cfn --region us-east-1 --az-id use1-az2
 
 # Deploy with custom stack name
-bash deploy.sh --node-type g5 --infra cfn --stack-name my-slinky-stack
+bash deploy.sh --instance-type ml.g5.8xlarge --infra cfn --stack-name my-slinky-stack
 ```
 
 **Terraform path:**
 
 ```bash
 # Deploy g5 using Terraform
-bash deploy.sh --node-type g5 --infra tf
+bash deploy.sh --instance-type ml.g5.8xlarge --infra tf
 
 # Deploy p5 in us-east-1
-bash deploy.sh --node-type p5 --infra tf --region us-east-1 --az-id use1-az2
+bash deploy.sh --instance-type ml.p5.48xlarge --instance-count 2 --infra tf --region us-east-1 --az-id use1-az2
 ```
 
 The Terraform path will show a plan and prompt for confirmation before
@@ -113,7 +115,7 @@ accelerated).
 ### CloudFormation Path
 
 1. Sources `lib/deploy_helpers.sh`
-2. Calls `resolve_node_profile()` to set instance type/count for the profile
+2. Calls `resolve_instance_profile()` to set instance type/count for the profile
 3. Validates AWS credentials via `aws sts get-caller-identity`
 4. Resolves AZ IDs for the region via `aws ec2 describe-availability-zones`
 5. Validates the specified `--az-id` against the resolved list
@@ -135,13 +137,14 @@ accelerated).
 ## Command Reference
 
 ```
-Usage: deploy.sh --node-type <g5|p5> --infra <cfn|tf> [OPTIONS]
+Usage: deploy.sh --instance-type <ml.X.Y> --infra <cfn|tf> [OPTIONS]
 
 Required:
-  --node-type <g5|p5>       Instance profile to deploy
+  --instance-type <type>    SageMaker instance type (e.g. ml.g5.8xlarge)
   --infra <cfn|tf>          Infrastructure deployment method
 
 Optional:
+  --instance-count <N>      Number of accelerated instances (default: 4)
   --region <region>         AWS region (default: us-west-2)
   --az-id <az-id>           Availability zone ID (default: usw2-az2)
   --stack-name <name>       CFN stack name (default: hp-eks-slinky-stack)
@@ -179,7 +182,7 @@ kubectl get nodes -o wide
 ## References
 
 - `deploy.sh` -- Main infrastructure deployment script
-- `lib/deploy_helpers.sh` -- Helper functions (`resolve_node_profile`,
+- `lib/deploy_helpers.sh` -- Helper functions (`resolve_instance_profile`,
   `resolve_cfn_params`, `resolve_tf_vars`, `validate_az_id`, `check_command`)
 - `params.json` -- CloudFormation parameters (40 params, g5 defaults)
 - `custom.tfvars` -- Terraform variables (g5 defaults)

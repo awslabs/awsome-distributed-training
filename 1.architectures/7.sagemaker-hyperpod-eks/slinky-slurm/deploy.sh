@@ -10,14 +10,12 @@ set -euo pipefail
 
 AWS_REGION="us-west-2"
 AZ_ID="usw2-az2"
-NODE_TYPE=""
+INSTANCE_TYPE=""
+INSTANCE_COUNT=4
 INFRA=""
 STACK_NAME="hp-eks-slinky-stack"
+TRAINING_PLAN=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Default profile: g5
-ACCEL_INSTANCE_TYPE="ml.g5.8xlarge"
-ACCEL_INSTANCE_COUNT=4
 
 ###########################
 ## Source Helper Library ###
@@ -31,15 +29,18 @@ source "${SCRIPT_DIR}/lib/deploy_helpers.sh"
 
 usage() {
     cat <<EOF
-Usage: $0 --node-type <g5|p5> --infra <cfn|tf> [OPTIONS]
+Usage: $0 --instance-type <ml.X.Y> --infra <cfn|tf> [OPTIONS]
 
 Deploy HyperPod EKS infrastructure using CloudFormation or Terraform.
 
 Required:
-  --node-type <g5|p5>       Instance profile to deploy
+  --instance-type <type>    SageMaker instance type for the accelerated group
+                            (e.g. ml.g5.8xlarge, ml.p5.48xlarge, ml.g6.12xlarge)
   --infra <cfn|tf>          Infrastructure deployment method
 
 Optional:
+  --instance-count <N>      Number of accelerated instances (default: 4)
+  --training-plan <name>    Training plan name (auto-resolves ARN and AZ)
   --region <region>         AWS region (default: us-west-2)
   --az-id <az-id>           Availability zone ID for instance groups and FSx
                             (default: usw2-az2)
@@ -47,14 +48,20 @@ Optional:
   --help                    Show this help message
 
 Examples:
-  # Deploy g5 instances in us-west-2 using CloudFormation
-  $0 --node-type g5 --infra cfn
+  # Deploy 4 ml.g5.8xlarge instances in us-west-2 using CloudFormation
+  $0 --instance-type ml.g5.8xlarge --infra cfn
 
-  # Deploy p5 instances in us-east-1 using Terraform
-  $0 --node-type p5 --infra tf --region us-east-1 --az-id use1-az2
+  # Deploy 2 ml.p5.48xlarge instances using Terraform
+  $0 --instance-type ml.p5.48xlarge --instance-count 2 --infra tf
+
+  # Deploy with a training plan (AZ auto-resolved from plan)
+  $0 --instance-type ml.p5.48xlarge --instance-count 2 --training-plan my-p5-plan --infra cfn
+
+  # Deploy in a different region
+  $0 --instance-type ml.g5.8xlarge --infra cfn --region us-east-1 --az-id use1-az2
 
   # Deploy with custom stack name
-  $0 --node-type g5 --infra cfn --stack-name my-slinky-stack
+  $0 --instance-type ml.g5.8xlarge --infra cfn --stack-name my-slinky-stack
 EOF
     exit 0
 }
@@ -73,8 +80,12 @@ while [[ $# -gt 0 ]]; do
             AZ_ID="$2"
             shift 2
             ;;
-        --node-type)
-            NODE_TYPE="$2"
+        --instance-type)
+            INSTANCE_TYPE="$2"
+            shift 2
+            ;;
+        --instance-count)
+            INSTANCE_COUNT="$2"
             shift 2
             ;;
         --infra)
@@ -83,6 +94,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --stack-name)
             STACK_NAME="$2"
+            shift 2
+            ;;
+        --training-plan)
+            TRAINING_PLAN="$2"
             shift 2
             ;;
         --help)
@@ -100,8 +115,8 @@ done
 ### Validate Arguments ####
 ###########################
 
-if [[ -z "${NODE_TYPE}" ]]; then
-    echo "Error: --node-type is required (g5 or p5)"
+if [[ -z "${INSTANCE_TYPE}" ]]; then
+    echo "Error: --instance-type is required (e.g. ml.g5.8xlarge)"
     exit 1
 fi
 
@@ -115,8 +130,27 @@ if [[ "${INFRA}" != "cfn" && "${INFRA}" != "tf" ]]; then
     exit 1
 fi
 
-# Resolve node profile (sets ACCEL_INSTANCE_TYPE and ACCEL_INSTANCE_COUNT)
-resolve_node_profile "${NODE_TYPE}"
+# Resolve instance profile (validates type via EC2 API, sets ACCEL_INSTANCE_TYPE
+# and ACCEL_INSTANCE_COUNT)
+resolve_instance_profile "${INSTANCE_TYPE}" "${INSTANCE_COUNT}"
+
+###########################
+## Training Plan Resolve ##
+###########################
+
+TRAINING_PLAN_ARN=""
+if [[ -n "${TRAINING_PLAN}" ]]; then
+    resolve_training_plan "${TRAINING_PLAN}" "${AWS_REGION}"
+
+    # Override AZ_ID if training plan's AZ differs
+    if [[ "${TRAINING_PLAN_AZ_ID}" != "${AZ_ID}" ]]; then
+        echo ""
+        echo "WARNING: Overriding --az-id from '${AZ_ID}' to '${TRAINING_PLAN_AZ_ID}'"
+        echo "  to match training plan '${TRAINING_PLAN}'."
+        echo "  The cluster subnet must be in the training plan's AZ."
+        AZ_ID="${TRAINING_PLAN_AZ_ID}"
+    fi
+fi
 
 ###########################
 ## Check Prerequisites ####
@@ -141,10 +175,12 @@ fi
 echo "  AWS CLI: OK"
 echo "  AWS credentials: OK"
 echo "  Region: ${AWS_REGION}"
-echo "  Node type: ${NODE_TYPE}"
-echo "  Accelerated instance: ${ACCEL_INSTANCE_TYPE} x ${ACCEL_INSTANCE_COUNT}"
+echo "  Instance type: ${ACCEL_INSTANCE_TYPE} x ${ACCEL_INSTANCE_COUNT}"
 echo "  Infrastructure: ${INFRA}"
 echo "  AZ ID: ${AZ_ID}"
+if [[ -n "${TRAINING_PLAN_ARN}" ]]; then
+    echo "  Training plan: ${TRAINING_PLAN} (${TRAINING_PLAN_ARN})"
+fi
 
 ###########################
 ## Resolve AZ IDs #########
@@ -197,14 +233,15 @@ deploy_cfn() {
     echo "  Source: ${params_file}"
     echo "  Stack name: ${STACK_NAME}"
 
-    # Resolve AZ values and node-type overrides in the params file
+    # Resolve AZ values and instance overrides in the params file
     local resolved_params
     resolved_params=$(resolve_cfn_params \
         "${params_file}" \
         "${AZ_IDS}" \
         "${AZ_ID}" \
         "${ACCEL_INSTANCE_TYPE}" \
-        "${ACCEL_INSTANCE_COUNT}")
+        "${ACCEL_INSTANCE_COUNT}" \
+        "${TRAINING_PLAN_ARN}")
 
     # Write resolved params to a temp file
     local resolved_file
@@ -344,7 +381,7 @@ deploy_tf() {
         "${AZ_ID}" \
         "${ACCEL_INSTANCE_TYPE}" \
         "${ACCEL_INSTANCE_COUNT}" \
-        "${NODE_TYPE}"
+        "${TRAINING_PLAN_ARN}"
 
     echo "  Resolved tfvars written to: ${target_tfvars}"
     echo ""

@@ -41,7 +41,8 @@ Optional:
   --help                    Show this help message
 
 Options passed through to setup.sh:
-  --node-type <g5|p5>       Instance profile
+  --instance-type <type>    SageMaker instance type (e.g. ml.g5.8xlarge)
+  --instance-count <N>      Number of accelerated instances (default: 4)
   --infra <cfn|tf>          Infrastructure method for CodeBuild stack
   --repo-name <name>        ECR repository name
   --tag <tag>               Image tag
@@ -49,14 +50,14 @@ Options passed through to setup.sh:
   --skip-build              Skip image build (use existing image in ECR)
 
 Examples:
-  # Full install: build image + deploy Slurm (g5 via CloudFormation)
-  $0 --node-type g5 --infra cfn
+  # Full install: build image + deploy Slurm (ml.g5.8xlarge via CloudFormation)
+  $0 --instance-type ml.g5.8xlarge --infra cfn
 
   # Skip setup (slurm-values.yaml already generated)
   $0 --skip-setup
 
   # Build locally, then install
-  $0 --node-type p5 --infra tf --local-build
+  $0 --instance-type ml.p5.48xlarge --instance-count 2 --infra tf --local-build
 EOF
     exit 0
 }
@@ -79,7 +80,7 @@ while [[ $# -gt 0 ]]; do
         --help)
             usage
             ;;
-        --node-type|--infra|--repo-name|--tag)
+        --instance-type|--instance-count|--infra|--repo-name|--tag)
             SETUP_ARGS="${SETUP_ARGS} $1 $2"
             shift 2
             ;;

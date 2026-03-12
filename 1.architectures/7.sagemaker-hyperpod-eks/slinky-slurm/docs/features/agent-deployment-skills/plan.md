@@ -18,10 +18,10 @@ completed: 2026-03-09
 - [x] 5. Create `build-slurm-image` skill
 - [x] 6. Create `deploy-slurm-cluster` skill
 - [x] 7. Create `validate-deployment` skill
-- [x] 8. Create `tests/test_setup.bats` (12 tests)
+- [x] 8. Create `tests/test_setup.bats` (13 tests)
 - [x] 9. Create `tests/test_install.bats` (21 tests)
 - [x] 10. Create `tests/test_destroy.bats` (18 tests)
-- [x] 11. Run `bats tests/` — all 96 tests pass (45 deploy + 12 setup + 21 install + 18 destroy)
+- [x] 11. Run `bats tests/` — all 108 tests pass (56 deploy + 13 setup + 21 install + 18 destroy)
 
 ## Completed: Skill Migration
 
@@ -66,7 +66,7 @@ table with 8 common failure scenarios.
 
 Guides agents through `deploy.sh` for both CFN and TF paths:
 
-- Node type selection (g5 vs p5 with instance type/count table)
+- Instance type selection (`--instance-type` with EC2 API auto-discovery)
 - Example commands for all common invocations
 - Internal workflow documentation (10 steps for CFN, 5 for TF)
 - Post-deployment steps: `source env_vars.sh`, `aws eks update-kubeconfig`
@@ -114,14 +114,28 @@ Post-deployment health checks with 7 sequential steps:
 Includes a ready-to-run quick validation script and a key logs reference
 section for debugging.
 
-## Completed: New Bats Tests (51 tests)
+## Completed: Bats Tests (108 tests)
 
-### `tests/test_setup.bats` — 12 tests
+### `tests/test_deploy.bats` — 56 tests
 
 | Category | Count | Tests |
 |----------|-------|-------|
-| Argument parsing | 7 | `--help`, missing `--node-type`, missing `--infra`, invalid `--infra`, unknown option, `--skip-build` in usage, `--local-build` in usage |
-| `resolve_helm_profile` | 3 | g5 sets all 7 variables, p5 overrides, invalid type |
+| `resolve_instance_profile` | 6 | ml.g5.8xlarge defaults, ml.p5.48xlarge with count, custom count override, empty type, missing `ml.` prefix, invalid type |
+| `resolve_helm_profile` (EC2 API) | 9 | ml.g5.8xlarge GPU/EFA/GRES, ml.p5.48xlarge GPU/EFA/GRES, ml.g6.12xlarge auto-discovers 4 L4 GPUs, replicas default to 4, rejects Neuron/Trainium, rejects CPU-only, rejects invalid type, empty type, missing `ml.` prefix |
+| `check_command` | 3 | finds bash, fails for nonexistent, finds jq |
+| `validate_az_id` | 5 | AZ exists, AZ not found, single-element list, no partial matches, different regions |
+| `resolve_cfn_params` | 9 | substitutes AZ IDs (2), sets TargetAZ, default g5 kept, overrides to p5, overrides count, general group unchanged, fails on missing file, preserves all 40 params |
+| `resolve_tf_vars` | 9 | overrides region, overrides AZ, default type preserved, overrides to p5, overrides count, general group unchanged, arbitrary instance type, fails on missing file, cleans up .bak files |
+| `deploy.sh` arg parsing | 7 | `--help`, missing `--instance-type`, missing `--infra`, invalid `--infra`, unknown option, `--instance-type` in usage, `--instance-count` in usage |
+| Template substitution | 2 | g5 valid YAML, p5 correct instance type/GPU count |
+| Cross-script smoke | 5 | `setup.sh --help`, `setup.sh` missing `--instance-type`, `setup.sh` missing `--infra`, `install.sh --help`, `destroy.sh --help`/missing `--infra` |
+
+### `tests/test_setup.bats` — 13 tests
+
+| Category | Count | Tests |
+|----------|-------|-------|
+| Argument parsing | 8 | `--help`, missing `--instance-type`, missing `--infra`, invalid `--infra`, unknown option, `--skip-build` in usage, `--local-build` in usage, `--instance-count` in usage |
+| `resolve_helm_profile` | 3 | ml.g5.8xlarge sets all 7 variables, ml.p5.48xlarge overrides, invalid type |
 | Template substitution | 2 | g5 no unresolved vars, p5 correct GPU/EFA/replicas |
 
 ### `tests/test_install.bats` — 21 tests
@@ -149,11 +163,12 @@ section for debugging.
 ### Test Results
 
 ```
-96 tests, 0 failures
+108 tests, 0 failures
 ```
 
-All 45 existing tests in `test_deploy.bats` continue to pass. The 3 new
-test files cover setup (12), install (21), and destroy (18) phases.
+56 tests in `test_deploy.bats` (refactored from 45 for `--instance-type`
+EC2 API integration). 13 in `test_setup.bats`, 21 in `test_install.bats`,
+18 in `test_destroy.bats`.
 
 ## Deliverables
 
@@ -168,8 +183,9 @@ test files cover setup (12), install (21), and destroy (18) phases.
 .opencode/skills/deploy-slurm-cluster/SKILL.md
 .opencode/skills/validate-deployment/SKILL.md
 
-# New tests
-tests/test_setup.bats    (12 tests)
+# Tests (108 total)
+tests/test_deploy.bats   (56 tests — refactored for --instance-type)
+tests/test_setup.bats    (13 tests)
 tests/test_install.bats  (21 tests)
 tests/test_destroy.bats  (18 tests)
 
@@ -187,7 +203,7 @@ With these skills, a future agent can deploy slinky-slurm end-to-end:
    -> Validate CLI tools, AWS creds, region, AZ
 
 2. Load skill: deploy-infrastructure
-   -> Run deploy.sh --node-type <g5|p5> --infra <cfn|tf>
+   -> Run deploy.sh --instance-type <ml.X.Y> --infra <cfn|tf>
    -> Source env_vars.sh, update kubeconfig
 
 3. Load skill: build-slurm-image

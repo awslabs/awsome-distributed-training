@@ -28,7 +28,7 @@ After the image build, `setup.sh` always:
 ## Prerequisites
 
 - AWS CLI configured with valid credentials
-- `--node-type` and `--infra` flags decided
+- `--instance-type` and `--infra` flags decided
 - For **CodeBuild** (default):
   - `env_vars.sh` available (from `deploy.sh`) for AWS_ACCOUNT_ID, AWS_REGION
   - `zip` command available
@@ -49,30 +49,30 @@ See the `deployment-preflight` skill for full prerequisite validation.
 
 ```bash
 # Build via CodeBuild for g5 instances using CloudFormation
-bash setup.sh --node-type g5 --infra cfn
+bash setup.sh --instance-type ml.g5.8xlarge --infra cfn
 
 # Build via CodeBuild for p5 instances using Terraform
-bash setup.sh --node-type p5 --infra tf
+bash setup.sh --instance-type ml.p5.48xlarge --instance-count 2 --infra tf
 ```
 
 **Local Docker -- for development/testing:**
 
 ```bash
 # Build locally for g5 instances
-bash setup.sh --node-type g5 --infra cfn --local-build
+bash setup.sh --instance-type ml.g5.8xlarge --infra cfn --local-build
 
 # Build locally for p5 instances
-bash setup.sh --node-type p5 --infra tf --local-build
+bash setup.sh --instance-type ml.p5.48xlarge --instance-count 2 --infra tf --local-build
 ```
 
 **Skip Build -- image already in ECR:**
 
 ```bash
 # Use existing ECR image
-bash setup.sh --node-type g5 --infra cfn --skip-build
+bash setup.sh --instance-type ml.g5.8xlarge --infra cfn --skip-build
 
 # With custom repo name and tag
-bash setup.sh --node-type g5 --infra cfn --skip-build \
+bash setup.sh --instance-type ml.g5.8xlarge --infra cfn --skip-build \
     --repo-name my-slurmd --tag v1.0
 ```
 
@@ -147,7 +147,7 @@ ls -la ~/.ssh/id_ed25519_slurm*
 ### Values File Rendering (All Paths)
 
 Calls `resolve_helm_profile()` which sets these variables based on
-`--node-type`:
+`--instance-type`:
 
 | Variable | g5 Value | p5 Value |
 |----------|----------|----------|
@@ -169,13 +169,14 @@ Then uses `sed` to substitute 10 template variables in
 ## Command Reference
 
 ```
-Usage: setup.sh --node-type <g5|p5> --infra <cfn|tf> [OPTIONS]
+Usage: setup.sh --instance-type <ml.X.Y> --infra <cfn|tf> [OPTIONS]
 
 Required:
-  --node-type <g5|p5>       Instance profile (sets GPU/EFA/GRES/replicas)
+  --instance-type <type>    SageMaker instance type for GPU/EFA/GRES resolution
   --infra <cfn|tf>          Infrastructure method for CodeBuild stack
 
 Optional:
+  --instance-count <N>      Number of compute node replicas (default: varies by instance type)
   --repo-name <name>        ECR repository name (default: dlc-slurmd)
   --tag <tag>               Image tag (default: 25.11.1-ubuntu24.04)
   --region <region>         AWS region (default: AWS CLI configured or us-west-2)
@@ -215,7 +216,7 @@ aws ecr describe-images \
 | Docker login fails for DLC ECR | Region mismatch | DLC registry is always in `us-east-1`, not the deployment region |
 | `docker buildx` fails on macOS | Docker Desktop not running or buildx not enabled | Start Docker Desktop; ensure buildx is available: `docker buildx version` |
 | ECR image not found (`--skip-build`) | Wrong repo name, tag, or region | Verify with `aws ecr describe-images --repository-name <name>` |
-| Template variables not substituted | `resolve_helm_profile` failed | Check that `--node-type` is `g5` or `p5` |
+| Template variables not substituted | `resolve_helm_profile` failed | Check that `--instance-type` is a valid instance type |
 | S3 bucket creation fails | Bucket name already taken | The bucket name includes account ID and region; check IAM permissions |
 | CodeBuild stack already exists | Prior run created it | Script handles this gracefully (skips creation) |
 

@@ -7,6 +7,11 @@ completed: 2026-03-09
 
 # Deployment Automation Scripts — Plan
 
+> **NOTE:** The `--node-type g5|p5` CLI described below was subsequently
+> refactored to `--instance-type <ml.X.Y>` + `--instance-count <N>` with
+> EC2 API auto-discovery. See `AGENTS.md` and the current script `--help`
+> for the updated interface.
+
 ## Steps
 
 - [x] 1. Create `deploy.sh` (Phase 0: Infrastructure deployment)

@@ -8,13 +8,15 @@
 
 This project contains Helm values, Kubernetes manifests, Dockerfiles, Terraform/CloudFormation
 parameters, Slurm batch scripts, deployment automation scripts, and documentation. There is
-**no application source code** (no Python/Go/TS modules). Two hardware profiles (g5 and p5)
-have sbatch scripts organized by workload type under `sbatch/` (e.g., `sbatch/fsdp/`).
+**no application source code** (no Python/Go/TS modules). Sbatch scripts are organized by
+workload type under `sbatch/` (e.g., `sbatch/fsdp/`) with hardware-profile prefixes (g5, p5).
 Infrastructure config files (`params.json`, `custom.tfvars`) are consolidated at the
-project root with g5 defaults; `deploy.sh` conditionally overrides values for p5.
+project root with `ml.g5.8xlarge` defaults; `deploy.sh` overrides values for any user-specified
+instance type via `--instance-type` and `--instance-count`.
 
 Key automation scripts:
-- **`deploy.sh`** — Infrastructure deployment via CloudFormation or Terraform
+- **`deploy.sh`** — Infrastructure deployment via CloudFormation or Terraform;
+  supports `--training-plan <name>` for reserved capacity (auto-resolves ARN and AZ)
 - **`setup.sh`** — Container image build (CodeBuild/local), SSH keys, Helm values generation
 - **`install.sh`** — cert-manager, AWS LB Controller (Pod Identity), subnet tagging,
   FSx PVC, MariaDB, Slurm operator, Slurm cluster Helm installs, NLB config
@@ -101,8 +103,8 @@ bats --verbose-run tests/test_deploy.bats
 ```
 
 Test structure:
-- `tests/test_deploy.bats` — 45 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
-- `tests/test_setup.bats` — 12 unit tests for `setup.sh` argument parsing, profile
+- `tests/test_deploy.bats` — 68 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
+- `tests/test_setup.bats` — 13 unit tests for `setup.sh` argument parsing, profile
   resolution, and template substitution
 - `tests/test_install.bats` — 21 unit tests for `install.sh` argument parsing, version
   constants, install order, `env_vars.sh` dependency validation, and EBS CSI/gp3 phases
@@ -250,15 +252,16 @@ hardware-profile prefixes (`g5-`, `p5-`). When modifying one profile's sbatch, c
 the same change should be applied to the other. The two files within each workload directory
 are structurally aligned (same section ordering, same environment variable blocks) so they
 diff cleanly. The `params.json` and `custom.tfvars` files have been consolidated to the
-project root (g5 defaults); `deploy.sh` conditionally overrides values for p5 at deploy time.
+project root (g5 defaults); `deploy.sh` overrides values for any instance type at deploy time.
 Helm values files have been consolidated into `slurm-values.yaml.template` at the project root.
 
-Known intentional differences (handled by `resolve_helm_profile` and `resolve_node_profile`):
+Known intentional differences between g5 and p5 sbatch scripts (GPU/EFA/GRES values are
+auto-discovered from the instance type via `aws ec2 describe-instance-types`):
 
 - Instance types (`ml.g5.8xlarge` vs `ml.p5.48xlarge`)
 - GPU counts (1 vs 8) and EFA interface counts (1 vs 32)
 - Compute node replicas (4 vs 2)
-- GRES configuration (`gpu:1` vs `gpu:8`)
+- GRES configuration (`gpu:a10g:1` vs `gpu:h100:8`)
 - SBATCH directives (`--ntasks-per-node`, `--cpus-per-task`)
 - EFA/NCCL environment variables specific to the network topology
 

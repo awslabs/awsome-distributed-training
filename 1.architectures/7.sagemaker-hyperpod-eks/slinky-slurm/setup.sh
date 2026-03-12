@@ -12,7 +12,8 @@ REPO_NAME="dlc-slurmd"
 IMAGE_TAG="25.11.1-ubuntu24.04"
 AWS_REGION=$(aws configure get region 2>/dev/null || echo "us-west-2")
 AWS_ACCOUNT_ID=""
-NODE_TYPE=""
+INSTANCE_TYPE=""
+INSTANCE_COUNT=4
 INFRA=""
 SKIP_BUILD=false
 LOCAL_BUILD=false
@@ -32,16 +33,19 @@ source "${SCRIPT_DIR}/lib/deploy_helpers.sh"
 
 usage() {
     cat <<EOF
-Usage: $0 --node-type <g5|p5> --infra <cfn|tf> [OPTIONS]
+Usage: $0 --instance-type <ml.X.Y> --infra <cfn|tf> [OPTIONS]
 
 Build the Slurmd DLC container image, generate SSH keys, and produce
 slurm-values.yaml from the template.
 
 Required:
-  --node-type <g5|p5>       Instance profile (sets GPU/EFA/GRES/replicas)
+  --instance-type <type>    SageMaker instance type for GPU/EFA/GRES resolution
+                            (e.g. ml.g5.8xlarge, ml.p5.48xlarge, ml.g6.12xlarge)
   --infra <cfn|tf>          Infrastructure method for CodeBuild stack
 
 Optional:
+  --instance-count <N>      Number of accelerated instances / Slurm worker
+                            replicas (default: 4)
   --repo-name <name>        ECR repository name (default: dlc-slurmd)
   --tag <tag>               Image tag (default: 25.11.1-ubuntu24.04)
   --region <region>         AWS region (default: AWS CLI configured or us-west-2)
@@ -50,14 +54,14 @@ Optional:
   --help                    Show this help message
 
 Examples:
-  # Build via CodeBuild for g5 instances using CloudFormation
-  $0 --node-type g5 --infra cfn
+  # Build via CodeBuild for ml.g5.8xlarge instances
+  $0 --instance-type ml.g5.8xlarge --infra cfn
 
-  # Build locally for p5 instances
-  $0 --node-type p5 --infra tf --local-build
+  # Build locally for ml.p5.48xlarge instances (2 nodes)
+  $0 --instance-type ml.p5.48xlarge --instance-count 2 --infra tf --local-build
 
   # Skip build (image already in ECR)
-  $0 --node-type g5 --infra cfn --skip-build
+  $0 --instance-type ml.g5.8xlarge --infra cfn --skip-build
 EOF
     exit 0
 }
@@ -68,8 +72,12 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --node-type)
-            NODE_TYPE="$2"
+        --instance-type)
+            INSTANCE_TYPE="$2"
+            shift 2
+            ;;
+        --instance-count)
+            INSTANCE_COUNT="$2"
             shift 2
             ;;
         --infra)
@@ -111,8 +119,8 @@ done
 ### Validate Arguments ####
 ###########################
 
-if [[ -z "${NODE_TYPE}" ]]; then
-    echo "Error: --node-type is required (g5 or p5)"
+if [[ -z "${INSTANCE_TYPE}" ]]; then
+    echo "Error: --instance-type is required (e.g. ml.g5.8xlarge)"
     exit 1
 fi
 
@@ -126,8 +134,9 @@ if [[ "${INFRA}" != "cfn" && "${INFRA}" != "tf" ]]; then
     exit 1
 fi
 
-# Resolve Helm profile variables
-resolve_helm_profile "${NODE_TYPE}"
+# Resolve Helm profile variables (validates type via EC2 API, sets
+# GPU_COUNT, EFA_COUNT, GPU_GRES, REPLICAS, etc.)
+resolve_helm_profile "${INSTANCE_TYPE}" "${INSTANCE_COUNT}"
 
 # Get AWS account ID
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -138,7 +147,8 @@ echo "=========================================="
 echo "  Slurmd DLC Setup"
 echo "=========================================="
 echo ""
-echo "  Node type: ${NODE_TYPE}"
+echo "  Instance type: ${INSTANCE_TYPE}"
+echo "  Instance count: ${INSTANCE_COUNT}"
 echo "  Infrastructure: ${INFRA}"
 echo "  Region: ${AWS_REGION}"
 echo "  Account: ${AWS_ACCOUNT_ID}"

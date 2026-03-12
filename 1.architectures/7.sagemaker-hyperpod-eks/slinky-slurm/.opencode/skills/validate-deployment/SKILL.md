@@ -53,8 +53,9 @@ kubectl -n mariadb get pods -o wide
 | `slinky` | `slurm-operator-*` | Running |
 | `mariadb` | `mariadb-operator-*`, `mariadb-*` | Running |
 
-For g5 profile: expect 4 `slurm-slurmd-slinky-*` pods.
-For p5 profile: expect 2 `slurm-slurmd-slinky-*` pods.
+The number of `slurm-slurmd-slinky-*` pods should match the
+`--instance-count` used during deployment (default: 4 for
+`ml.g5.8xlarge`, 2 for `ml.p5.48xlarge`).
 
 **If any pods are not Running:**
 
@@ -77,7 +78,7 @@ kubectl get nodes -o wide
 
 **Expected:**
 - Management nodes: `ml.m5.4xlarge`, STATUS=Ready
-- Accelerated nodes: `ml.g5.8xlarge` (g5) or `ml.p5.48xlarge` (p5),
+- Accelerated nodes: your chosen instance type (e.g., `ml.g5.8xlarge`),
   STATUS=Ready
 
 **If nodes show NotReady:**
@@ -144,19 +145,14 @@ scontrol show nodes
 sacctmgr show clusters
 ```
 
-**Expected `sinfo` output for g5:**
+**Expected `sinfo` output (example for `ml.g5.8xlarge` with 4 nodes):**
 
 ```
 PARTITION  AVAIL  TIMELIMIT  NODES  STATE  NODELIST
 slinky*    up     infinite   4      idle   slurm-slurmd-slinky-[0-3]
 ```
 
-**Expected `sinfo` output for p5:**
-
-```
-PARTITION  AVAIL  TIMELIMIT  NODES  STATE  NODELIST
-slinky*    up     infinite   2      idle   slurm-slurmd-slinky-[0-1]
-```
+Node count should match `--instance-count` used during deployment.
 
 ### Step 6: Submit a Test Job
 
@@ -172,24 +168,25 @@ squeue  # Monitor job status
 cat /tmp/test-*.out  # Check output after completion
 ```
 
-### Step 7: Submit the Profile-Specific Training Job (Optional)
+### Step 7: Submit a Training Job (Optional)
 
-For a full end-to-end validation, submit the Llama2 7B training job:
+For a full end-to-end validation, submit the Llama2 7B training job.
+Only the `ml.g5.8xlarge` sbatch has been validated end-to-end:
 
-**For g5:**
+**For `ml.g5.8xlarge`:**
 ```bash
 sbatch sbatch/fsdp/g5-llama2_7b-training.sbatch
 squeue  # Monitor
 ```
 
-**For p5:**
+**For `ml.p5.48xlarge`:**
 ```bash
 sbatch sbatch/fsdp/p5-llama2_7b-training.sbatch
 squeue  # Monitor
 ```
 
 These jobs run a distributed training workload using PyTorch FSDP and
-validate GPU compute, inter-node communication (EFA for p5), and the shared
+validate GPU compute, inter-node communication (EFA), and the shared
 filesystem (FSx Lustre).
 
 ## Quick Validation Script

@@ -225,10 +225,10 @@ For scripts that use `set -euo pipefail`, run them as subprocesses (not
 sourced) to test argument validation and exit codes.
 
 ```bash
-@test "fails when --node-type is missing" {
+@test "fails when --instance-type is missing" {
     run bash "$PROJECT_DIR/deploy.sh" --infra cfn
     assert_failure
-    assert_output --partial "Error: --node-type is required"
+    assert_output --partial "Error: --instance-type is required"
 }
 
 @test "--help exits 0 and prints usage" {

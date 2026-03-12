@@ -17,20 +17,20 @@ load 'helpers/setup'
     assert_output --partial "Usage:"
 }
 
-@test "setup.sh: fails when --node-type is missing" {
+@test "setup.sh: fails when --instance-type is missing" {
     run bash "${PROJECT_DIR}/setup.sh" --infra cfn
     assert_failure
-    assert_output --partial "Error: --node-type is required"
+    assert_output --partial "Error: --instance-type is required"
 }
 
 @test "setup.sh: fails when --infra is missing" {
-    run bash "${PROJECT_DIR}/setup.sh" --node-type g5
+    run bash "${PROJECT_DIR}/setup.sh" --instance-type ml.g5.8xlarge
     assert_failure
     assert_output --partial "Error: --infra is required"
 }
 
 @test "setup.sh: fails with invalid --infra value" {
-    run bash "${PROJECT_DIR}/setup.sh" --node-type g5 --infra docker
+    run bash "${PROJECT_DIR}/setup.sh" --instance-type ml.g5.8xlarge --infra docker
     assert_failure
     assert_output --partial "Error: --infra must be 'cfn' or 'tf'"
 }
@@ -53,13 +53,19 @@ load 'helpers/setup'
     assert_output --partial "--local-build"
 }
 
+@test "setup.sh: --help mentions --instance-count flag" {
+    run bash "${PROJECT_DIR}/setup.sh" --help
+    assert_success
+    assert_output --partial "--instance-count"
+}
+
 ###########################
 ## resolve_helm_profile ###
 ## (integration tests)  ###
 ###########################
 
-@test "resolve_helm_profile: g5 sets all 7 template variables" {
-    resolve_helm_profile "g5"
+@test "resolve_helm_profile: ml.g5.8xlarge sets all 7 template variables" {
+    resolve_helm_profile "ml.g5.8xlarge" 4
     assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.g5.8xlarge"
     assert_equal "${GPU_COUNT}" "1"
     assert_equal "${EFA_COUNT}" "1"
@@ -69,8 +75,8 @@ load 'helpers/setup'
     assert_equal "${PVC_NAME}" "fsx-claim"
 }
 
-@test "resolve_helm_profile: p5 sets correct overrides" {
-    resolve_helm_profile "p5"
+@test "resolve_helm_profile: ml.p5.48xlarge sets correct overrides" {
+    resolve_helm_profile "ml.p5.48xlarge" 2
     assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.p5.48xlarge"
     assert_equal "${GPU_COUNT}" "8"
     assert_equal "${EFA_COUNT}" "32"
@@ -78,10 +84,10 @@ load 'helpers/setup'
     assert_equal "${REPLICAS}" "2"
 }
 
-@test "resolve_helm_profile: invalid node type returns 1" {
-    run resolve_helm_profile "p4"
+@test "resolve_helm_profile: invalid instance type returns 1" {
+    run resolve_helm_profile "ml.g5.99xlarge"
     assert_failure
-    assert_output --partial "Error: --node-type must be 'g5' or 'p5'"
+    assert_output --partial "is not a valid instance type"
 }
 
 ###########################
@@ -90,7 +96,7 @@ load 'helpers/setup'
 ###########################
 
 @test "values template: g5 substitution produces no unresolved variables" {
-    resolve_helm_profile "g5"
+    resolve_helm_profile "ml.g5.8xlarge" 4
 
     sed -e "s|\${image_repository}|123456789012.dkr.ecr.us-west-2.amazonaws.com/dlc-slurmd|g" \
         -e "s|\${image_tag}|25.11.1-ubuntu24.04|g" \
@@ -110,7 +116,7 @@ load 'helpers/setup'
 }
 
 @test "values template: p5 substitution has correct GPU and EFA counts" {
-    resolve_helm_profile "p5"
+    resolve_helm_profile "ml.p5.48xlarge" 2
 
     sed -e "s|\${image_repository}|123456789012.dkr.ecr.us-west-2.amazonaws.com/dlc-slurmd|g" \
         -e "s|\${image_tag}|25.11.1-ubuntu24.04|g" \

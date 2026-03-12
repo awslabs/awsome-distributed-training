@@ -8,30 +8,158 @@
 load 'helpers/setup'
 
 ###########################
-## resolve_node_profile ###
+## resolve_instance_profile
 ###########################
 
-@test "resolve_node_profile: g5 sets correct instance type and count" {
-    resolve_node_profile "g5"
+@test "resolve_instance_profile: ml.g5.8xlarge sets correct type and default count" {
+    resolve_instance_profile "ml.g5.8xlarge"
     assert_equal "${ACCEL_INSTANCE_TYPE}" "ml.g5.8xlarge"
     assert_equal "${ACCEL_INSTANCE_COUNT}" "4"
 }
 
-@test "resolve_node_profile: p5 sets correct instance type and count" {
-    resolve_node_profile "p5"
+@test "resolve_instance_profile: ml.p5.48xlarge with count 2" {
+    resolve_instance_profile "ml.p5.48xlarge" 2
     assert_equal "${ACCEL_INSTANCE_TYPE}" "ml.p5.48xlarge"
     assert_equal "${ACCEL_INSTANCE_COUNT}" "2"
 }
 
-@test "resolve_node_profile: invalid node type returns 1" {
-    run resolve_node_profile "p4"
-    assert_failure
-    assert_output --partial "Error: --node-type must be 'g5' or 'p5'"
+@test "resolve_instance_profile: custom count overrides default" {
+    resolve_instance_profile "ml.g5.8xlarge" 8
+    assert_equal "${ACCEL_INSTANCE_COUNT}" "8"
 }
 
-@test "resolve_node_profile: empty node type returns 1" {
-    run resolve_node_profile ""
+@test "resolve_instance_profile: empty instance type returns 1" {
+    run resolve_instance_profile ""
     assert_failure
+    assert_output --partial "Error: --instance-type is required"
+}
+
+@test "resolve_instance_profile: missing ml. prefix returns 1" {
+    run resolve_instance_profile "g5.8xlarge"
+    assert_failure
+    assert_output --partial "must start with 'ml.'"
+}
+
+@test "resolve_instance_profile: invalid instance type returns 1" {
+    run resolve_instance_profile "ml.g5.99xlarge"
+    assert_failure
+    assert_output --partial "is not a valid instance type"
+}
+
+###########################
+## resolve_helm_profile ###
+###########################
+
+@test "resolve_helm_profile: ml.g5.8xlarge sets correct GPU/EFA/GRES/replicas" {
+    resolve_helm_profile "ml.g5.8xlarge" 4
+    assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.g5.8xlarge"
+    assert_equal "${GPU_COUNT}" "1"
+    assert_equal "${EFA_COUNT}" "1"
+    assert_equal "${GPU_GRES}" "gpu:a10g:1"
+    assert_equal "${REPLICAS}" "4"
+    assert_equal "${MGMT_INSTANCE_TYPE}" "ml.m5.4xlarge"
+    assert_equal "${PVC_NAME}" "fsx-claim"
+}
+
+@test "resolve_helm_profile: ml.p5.48xlarge sets correct GPU/EFA/GRES/replicas" {
+    resolve_helm_profile "ml.p5.48xlarge" 2
+    assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.p5.48xlarge"
+    assert_equal "${GPU_COUNT}" "8"
+    assert_equal "${EFA_COUNT}" "32"
+    assert_equal "${GPU_GRES}" "gpu:h100:8"
+    assert_equal "${REPLICAS}" "2"
+}
+
+@test "resolve_helm_profile: ml.g6.12xlarge auto-discovers 4 L4 GPUs" {
+    resolve_helm_profile "ml.g6.12xlarge" 3
+    assert_equal "${GPU_COUNT}" "4"
+    assert_equal "${GPU_GRES}" "gpu:l4:4"
+    assert_equal "${EFA_COUNT}" "1"
+    assert_equal "${REPLICAS}" "3"
+}
+
+@test "resolve_helm_profile: replicas defaults to 4 when count not specified" {
+    resolve_helm_profile "ml.g5.8xlarge"
+    assert_equal "${REPLICAS}" "4"
+}
+
+@test "resolve_helm_profile: rejects Neuron/Trainium instances" {
+    run resolve_helm_profile "ml.trn1.32xlarge" 4
+    assert_failure
+    assert_output --partial "Neuron/Trainium instances are not currently supported"
+}
+
+@test "resolve_helm_profile: rejects CPU-only instances" {
+    run resolve_helm_profile "ml.m5.xlarge" 2
+    assert_failure
+    assert_output --partial "has no GPUs"
+}
+
+@test "resolve_helm_profile: rejects invalid instance type" {
+    run resolve_helm_profile "ml.g5.99xlarge" 4
+    assert_failure
+    assert_output --partial "is not a valid instance type"
+}
+
+@test "resolve_helm_profile: empty instance type returns 1" {
+    run resolve_helm_profile ""
+    assert_failure
+    assert_output --partial "Error: --instance-type is required"
+}
+
+@test "resolve_helm_profile: missing ml. prefix returns 1" {
+    run resolve_helm_profile "p5.48xlarge"
+    assert_failure
+    assert_output --partial "must start with 'ml.'"
+}
+
+###########################
+## resolve_training_plan ##
+###########################
+
+@test "resolve_training_plan: valid plan sets ARN and AZ ID" {
+    run resolve_training_plan "test-plan" "us-west-2"
+    assert_success
+    assert_output --partial "arn:aws:sagemaker:us-west-2:123456789012:training-plan/test-plan"
+    assert_output --partial "Active"
+    # Verify exported variables are set (run executes in subshell, so check via function call)
+    resolve_training_plan "test-plan" "us-west-2"
+    assert_equal "${TRAINING_PLAN_ARN}" "arn:aws:sagemaker:us-west-2:123456789012:training-plan/test-plan"
+    assert_equal "${TRAINING_PLAN_AZ_ID}" "usw2-az2"
+}
+
+@test "resolve_training_plan: nonexistent plan returns 1" {
+    run resolve_training_plan "nonexistent-plan" "us-west-2"
+    assert_failure
+    assert_output --partial "not found"
+}
+
+@test "resolve_training_plan: empty name returns 1" {
+    run resolve_training_plan "" "us-west-2"
+    assert_failure
+    assert_output --partial "requires a plan name"
+}
+
+@test "resolve_training_plan: failed plan returns 1" {
+    run resolve_training_plan "failed-plan" "us-west-2"
+    assert_failure
+    assert_output --partial "status 'Failed'"
+}
+
+@test "resolve_training_plan: expired plan warns but succeeds" {
+    run resolve_training_plan "expired-plan" "us-west-2"
+    assert_success
+    assert_output --partial "WARNING"
+    assert_output --partial "Expired"
+    # Verify ARN is still set
+    resolve_training_plan "expired-plan" "us-west-2"
+    assert_equal "${TRAINING_PLAN_ARN}" "arn:aws:sagemaker:us-west-2:123456789012:training-plan/expired-plan"
+}
+
+@test "resolve_training_plan: no reserved capacity returns 1" {
+    run resolve_training_plan "no-capacity-plan" "us-west-2"
+    assert_failure
+    assert_output --partial "no reserved capacity"
 }
 
 ###########################
@@ -142,7 +270,7 @@ load 'helpers/setup'
     done <<< "${az_values}"
 }
 
-@test "resolve_cfn_params: g5 keeps default instance type in accelerated group" {
+@test "resolve_cfn_params: default keeps ml.g5.8xlarge in accelerated group" {
     local result
     result=$(resolve_cfn_params \
         "${FIXTURE_DIR}/params.json" \
@@ -162,7 +290,7 @@ load 'helpers/setup'
     assert_equal "${accel_type}" "ml.g5.8xlarge"
 }
 
-@test "resolve_cfn_params: p5 overrides accelerated group instance type" {
+@test "resolve_cfn_params: overrides accelerated group to ml.p5.48xlarge" {
     local result
     result=$(resolve_cfn_params \
         "${FIXTURE_DIR}/params.json" \
@@ -182,7 +310,7 @@ load 'helpers/setup'
     assert_equal "${accel_type}" "ml.p5.48xlarge"
 }
 
-@test "resolve_cfn_params: p5 overrides accelerated group instance count" {
+@test "resolve_cfn_params: overrides accelerated group instance count" {
     local result
     result=$(resolve_cfn_params \
         "${FIXTURE_DIR}/params.json" \
@@ -202,7 +330,7 @@ load 'helpers/setup'
     assert_equal "${accel_count}" "2"
 }
 
-@test "resolve_cfn_params: general group unchanged after p5 override" {
+@test "resolve_cfn_params: general group unchanged after accelerated override" {
     local result
     result=$(resolve_cfn_params \
         "${FIXTURE_DIR}/params.json" \
@@ -254,6 +382,56 @@ load 'helpers/setup'
     assert_equal "${count}" "40"
 }
 
+@test "resolve_cfn_params: injects TrainingPlanArn into accelerated group" {
+    local result
+    result=$(resolve_cfn_params "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.p5.48xlarge" 2 \
+        "arn:aws:sagemaker:us-west-2:123456789012:training-plan/test-plan")
+
+    # Extract the accelerated group from InstanceGroupSettings1
+    local accel_arn
+    accel_arn=$(echo "${result}" | jq -r '
+        .[] | select(.ParameterKey == "InstanceGroupSettings1") |
+        .ParameterValue | fromjson |
+        .[] | select(.InstanceGroupName == "accelerated-instance-group-1") |
+        .TrainingPlanArn')
+
+    assert_equal "${accel_arn}" "arn:aws:sagemaker:us-west-2:123456789012:training-plan/test-plan"
+}
+
+@test "resolve_cfn_params: omits TrainingPlanArn when empty" {
+    local result
+    result=$(resolve_cfn_params "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.g5.8xlarge" 4 "")
+
+    # TrainingPlanArn should not be present
+    local has_arn
+    has_arn=$(echo "${result}" | jq -r '
+        .[] | select(.ParameterKey == "InstanceGroupSettings1") |
+        .ParameterValue | fromjson |
+        .[] | select(.InstanceGroupName == "accelerated-instance-group-1") |
+        has("TrainingPlanArn")')
+
+    assert_equal "${has_arn}" "false"
+}
+
+@test "resolve_cfn_params: TrainingPlanArn absent from general group" {
+    local result
+    result=$(resolve_cfn_params "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.p5.48xlarge" 2 \
+        "arn:aws:sagemaker:us-west-2:123456789012:training-plan/test-plan")
+
+    # General group should NOT have TrainingPlanArn
+    local has_arn
+    has_arn=$(echo "${result}" | jq -r '
+        .[] | select(.ParameterKey == "InstanceGroupSettings1") |
+        .ParameterValue | fromjson |
+        .[] | select(.InstanceGroupName == "general-instance-group-2") |
+        has("TrainingPlanArn")')
+
+    assert_equal "${has_arn}" "false"
+}
+
 ###########################
 ## resolve_tf_vars ########
 ###########################
@@ -262,7 +440,7 @@ load 'helpers/setup'
     local target="${TEST_TEMP_DIR}/custom.tfvars"
     cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
 
-    resolve_tf_vars "${target}" "us-east-1" "use1-az2" "ml.g5.8xlarge" 4 "g5"
+    resolve_tf_vars "${target}" "us-east-1" "use1-az2" "ml.g5.8xlarge" 4
 
     run grep 'aws_region' "${target}"
     assert_output --partial 'us-east-1'
@@ -272,7 +450,7 @@ load 'helpers/setup'
     local target="${TEST_TEMP_DIR}/custom.tfvars"
     cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
 
-    resolve_tf_vars "${target}" "us-east-1" "use1-az2" "ml.g5.8xlarge" 4 "g5"
+    resolve_tf_vars "${target}" "us-east-1" "use1-az2" "ml.g5.8xlarge" 4
 
     run grep 'availability_zone_id' "${target}"
     # Both instance groups should have use1-az2
@@ -282,52 +460,65 @@ load 'helpers/setup'
     assert_failure
 }
 
-@test "resolve_tf_vars: g5 preserves default instance type" {
+@test "resolve_tf_vars: default instance type preserved when unchanged" {
     local target="${TEST_TEMP_DIR}/custom.tfvars"
     cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
 
-    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.g5.8xlarge" 4 "g5"
+    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.g5.8xlarge" 4
 
     run grep 'ml.g5.8xlarge' "${target}"
     assert_success
 }
 
-@test "resolve_tf_vars: p5 overrides accelerated instance type" {
+@test "resolve_tf_vars: overrides accelerated instance type to ml.p5.48xlarge" {
     local target="${TEST_TEMP_DIR}/custom.tfvars"
     cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
 
-    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.p5.48xlarge" 2 "p5"
+    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.p5.48xlarge" 2
 
     run grep 'ml.p5.48xlarge' "${target}"
     assert_success
 }
 
-@test "resolve_tf_vars: p5 overrides accelerated instance count" {
+@test "resolve_tf_vars: overrides accelerated instance count" {
     local target="${TEST_TEMP_DIR}/custom.tfvars"
     cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
 
-    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.p5.48xlarge" 2 "p5"
+    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.p5.48xlarge" 2
 
     # The first instance_count should be 2 (accelerated group).
-    # Extract just the number from the first instance_count line.
     local first_count
     first_count=$(awk '/instance_count/ { match($0, /[0-9]+/); print substr($0, RSTART, RLENGTH); exit }' "${target}")
 
     assert_equal "${first_count}" "2"
 }
 
-@test "resolve_tf_vars: p5 does not change general group instance type" {
+@test "resolve_tf_vars: does not change general group instance type" {
     local target="${TEST_TEMP_DIR}/custom.tfvars"
     cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
 
-    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.p5.48xlarge" 2 "p5"
+    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.p5.48xlarge" 2
 
     run grep 'ml.m5.4xlarge' "${target}"
     assert_success
 }
 
+@test "resolve_tf_vars: overrides to arbitrary instance type" {
+    local target="${TEST_TEMP_DIR}/custom.tfvars"
+    cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
+
+    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.g6.12xlarge" 6
+
+    run grep 'ml.g6.12xlarge' "${target}"
+    assert_success
+
+    local first_count
+    first_count=$(awk '/instance_count/ { match($0, /[0-9]+/); print substr($0, RSTART, RLENGTH); exit }' "${target}")
+    assert_equal "${first_count}" "6"
+}
+
 @test "resolve_tf_vars: fails when file not found" {
-    run resolve_tf_vars "/nonexistent/custom.tfvars" "us-west-2" "usw2-az2" "ml.g5.8xlarge" 4 "g5"
+    run resolve_tf_vars "/nonexistent/custom.tfvars" "us-west-2" "usw2-az2" "ml.g5.8xlarge" 4
     assert_failure
     assert_output --partial "Error: tfvars file not found"
 }
@@ -336,10 +527,34 @@ load 'helpers/setup'
     local target="${TEST_TEMP_DIR}/custom.tfvars"
     cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
 
-    resolve_tf_vars "${target}" "us-east-1" "use1-az2" "ml.g5.8xlarge" 4 "g5"
+    resolve_tf_vars "${target}" "us-east-1" "use1-az2" "ml.g5.8xlarge" 4
 
     # No .bak files should remain
     run ls "${TEST_TEMP_DIR}"/*.bak 2>/dev/null
+    assert_failure
+}
+
+@test "resolve_tf_vars: injects training_plan_arn into first group" {
+    local target="${TEST_TEMP_DIR}/custom.tfvars"
+    cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
+
+    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.p5.48xlarge" 2 \
+        "arn:aws:sagemaker:us-west-2:123456789012:training-plan/test-plan"
+
+    # training_plan_arn should appear in the file
+    run grep 'training_plan_arn' "${target}"
+    assert_success
+    assert_output --partial "arn:aws:sagemaker:us-west-2:123456789012:training-plan/test-plan"
+}
+
+@test "resolve_tf_vars: omits training_plan_arn when empty" {
+    local target="${TEST_TEMP_DIR}/custom.tfvars"
+    cp "${FIXTURE_DIR}/custom.tfvars" "${target}"
+
+    resolve_tf_vars "${target}" "us-west-2" "usw2-az2" "ml.g5.8xlarge" 4 ""
+
+    # training_plan_arn should NOT appear
+    run grep 'training_plan_arn' "${target}"
     assert_failure
 }
 
@@ -353,20 +568,20 @@ load 'helpers/setup'
     assert_output --partial "Usage:"
 }
 
-@test "deploy.sh: fails when --node-type is missing" {
+@test "deploy.sh: fails when --instance-type is missing" {
     run bash "${PROJECT_DIR}/deploy.sh" --infra cfn
     assert_failure
-    assert_output --partial "Error: --node-type is required"
+    assert_output --partial "Error: --instance-type is required"
 }
 
 @test "deploy.sh: fails when --infra is missing" {
-    run bash "${PROJECT_DIR}/deploy.sh" --node-type g5
+    run bash "${PROJECT_DIR}/deploy.sh" --instance-type ml.g5.8xlarge
     assert_failure
     assert_output --partial "Error: --infra is required"
 }
 
 @test "deploy.sh: fails with invalid --infra value" {
-    run bash "${PROJECT_DIR}/deploy.sh" --node-type g5 --infra docker
+    run bash "${PROJECT_DIR}/deploy.sh" --instance-type ml.g5.8xlarge --infra docker
     assert_failure
     assert_output --partial "Error: --infra must be 'cfn' or 'tf'"
 }
@@ -377,34 +592,19 @@ load 'helpers/setup'
     assert_output --partial "Error: Unknown option"
 }
 
-###########################
-## resolve_helm_profile ###
-###########################
-
-@test "resolve_helm_profile: g5 sets correct GPU/EFA/GRES/replicas" {
-    resolve_helm_profile "g5"
-    assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.g5.8xlarge"
-    assert_equal "${GPU_COUNT}" "1"
-    assert_equal "${EFA_COUNT}" "1"
-    assert_equal "${GPU_GRES}" "gpu:a10g:1"
-    assert_equal "${REPLICAS}" "4"
-    assert_equal "${MGMT_INSTANCE_TYPE}" "ml.m5.4xlarge"
-    assert_equal "${PVC_NAME}" "fsx-claim"
+@test "deploy.sh: --help mentions --instance-type flag" {
+    run bash "${PROJECT_DIR}/deploy.sh" --help
+    assert_output --partial "--instance-type"
 }
 
-@test "resolve_helm_profile: p5 sets correct GPU/EFA/GRES/replicas" {
-    resolve_helm_profile "p5"
-    assert_equal "${HELM_ACCEL_INSTANCE_TYPE}" "ml.p5.48xlarge"
-    assert_equal "${GPU_COUNT}" "8"
-    assert_equal "${EFA_COUNT}" "32"
-    assert_equal "${GPU_GRES}" "gpu:h100:8"
-    assert_equal "${REPLICAS}" "2"
+@test "deploy.sh: --help mentions --instance-count flag" {
+    run bash "${PROJECT_DIR}/deploy.sh" --help
+    assert_output --partial "--instance-count"
 }
 
-@test "resolve_helm_profile: invalid node type returns 1" {
-    run resolve_helm_profile "p4"
-    assert_failure
-    assert_output --partial "Error: --node-type must be 'g5' or 'p5'"
+@test "deploy.sh: --help mentions --training-plan flag" {
+    run bash "${PROJECT_DIR}/deploy.sh" --help
+    assert_output --partial "--training-plan"
 }
 
 ###########################
@@ -412,7 +612,7 @@ load 'helpers/setup'
 ###########################
 
 @test "values template: g5 substitution produces valid YAML" {
-    resolve_helm_profile "g5"
+    resolve_helm_profile "ml.g5.8xlarge" 4
 
     sed -e "s|\${image_repository}|123456789012.dkr.ecr.us-west-2.amazonaws.com/dlc-slurmd|g" \
         -e "s|\${image_tag}|25.11.1-ubuntu24.04|g" \
@@ -445,7 +645,7 @@ load 'helpers/setup'
 }
 
 @test "values template: p5 substitution has correct instance type and GPU count" {
-    resolve_helm_profile "p5"
+    resolve_helm_profile "ml.p5.48xlarge" 2
 
     sed -e "s|\${image_repository}|123456789012.dkr.ecr.us-west-2.amazonaws.com/dlc-slurmd|g" \
         -e "s|\${image_tag}|25.11.1-ubuntu24.04|g" \
@@ -482,14 +682,14 @@ load 'helpers/setup'
     assert_output --partial "Usage:"
 }
 
-@test "setup.sh: fails when --node-type is missing" {
+@test "setup.sh: fails when --instance-type is missing" {
     run bash "${PROJECT_DIR}/setup.sh" --infra cfn
     assert_failure
-    assert_output --partial "Error: --node-type is required"
+    assert_output --partial "Error: --instance-type is required"
 }
 
 @test "setup.sh: fails when --infra is missing" {
-    run bash "${PROJECT_DIR}/setup.sh" --node-type g5
+    run bash "${PROJECT_DIR}/setup.sh" --instance-type ml.g5.8xlarge
     assert_failure
     assert_output --partial "Error: --infra is required"
 }

@@ -100,19 +100,19 @@ availability zones, substitutes parameters, and extracts stack outputs to `env_v
 
 Deploy with 4 `ml.g5.8xlarge` instances using CloudFormation:
 ```
-./deploy.sh --node-type g5 --infra cfn
+./deploy.sh --instance-type ml.g5.8xlarge --infra cfn
 ```
 Deploy with 2 `ml.p5.48xlarge` instances using CloudFormation:
 ```
-./deploy.sh --node-type p5 --infra cfn
+./deploy.sh --instance-type ml.p5.48xlarge --instance-count 2 --infra cfn
 ```
 Deploy using Terraform:
 ```
-./deploy.sh --node-type g5 --infra tf
+./deploy.sh --instance-type ml.g5.8xlarge --infra tf
 ```
 Override the default region and availability zone:
 ```
-./deploy.sh --node-type g5 --infra cfn --region us-east-1 --az-id use1-az2
+./deploy.sh --instance-type ml.g5.8xlarge --infra cfn --region us-east-1 --az-id use1-az2
 ```
 
 After the script completes, source the environment variables:
@@ -136,15 +136,15 @@ MariaDB, Slurm operator, and Slurm cluster Helm installations and NLB configurat
 
 Install with CodeBuild image build (default):
 ```
-./install.sh --node-type g5 --infra cfn
+./install.sh --instance-type ml.g5.8xlarge --infra cfn
 ```
 Install with local Docker build instead of CodeBuild:
 ```
-./install.sh --node-type g5 --infra cfn --local-build
+./install.sh --instance-type ml.g5.8xlarge --infra cfn --local-build
 ```
 Install with an existing ECR image (skip build entirely):
 ```
-./install.sh --node-type g5 --infra cfn --skip-build
+./install.sh --instance-type ml.g5.8xlarge --infra cfn --skip-build
 ```
 Re-install Slurm without rebuilding the image or regenerating values:
 ```
@@ -310,6 +310,10 @@ NVLink (NV18 indicates 18 NVLink connections). The GPUs are split across two NUM
 
 ### FSDP Test
 
+> **NOTE:** The `g5-llama2_7b-training.sbatch` script has been validated on
+> `ml.g5.8xlarge` instances. The `p5-llama2_7b-training.sbatch` script is
+> provided for `ml.p5.48xlarge` instances but has not yet been validated.
+
 SSH into the login pod as root, clone the repo, and create a checkpoints directory:
 
 ```
@@ -411,9 +415,9 @@ watch -n 5 -d "ls -lh checkpoints"
 
 The deployment scripts and their helper library `lib/deploy_helpers.sh` are
 tested using [bats-core](https://github.com/bats-core/bats-core). The test
-suite covers argument parsing, node profile resolution, Helm profile
-resolution, AZ validation, CloudFormation parameter substitution (jq),
-Terraform variable overrides (sed/awk), template variable substitution,
+suite covers argument parsing, instance type validation, Helm profile
+resolution via EC2 API, AZ validation, CloudFormation parameter substitution
+(jq), Terraform variable overrides (sed/awk), template variable substitution,
 install.sh phases and flag validation, and destroy.sh teardown ordering.
 
 ```
@@ -425,7 +429,7 @@ npm install -g bats               # cross-platform
 # One-time setup: install bats helper libraries
 bash tests/install_bats_libs.sh
 
-# Run all tests (96 tests across 4 test files)
+# Run all tests (108 tests across 4 test files)
 bats tests/
 
 # Run a specific test file

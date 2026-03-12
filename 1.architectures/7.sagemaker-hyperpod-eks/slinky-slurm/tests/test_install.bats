@@ -26,7 +26,8 @@ load 'helpers/setup'
 @test "install.sh: --help mentions pass-through options" {
     run bash "${PROJECT_DIR}/install.sh" --help
     assert_success
-    assert_output --partial "--node-type"
+    assert_output --partial "--instance-type"
+    assert_output --partial "--instance-count"
     assert_output --partial "--infra"
     assert_output --partial "--local-build"
     assert_output --partial "--skip-build"

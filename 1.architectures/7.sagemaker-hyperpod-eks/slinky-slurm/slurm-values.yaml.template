@@ -10,10 +10,10 @@
 #   ${image_tag}            - Container image tag (e.g. 25.11.1-ubuntu24.04)
 #   ${mgmt_instance_type}   - Management node instance type (e.g. ml.m5.2xlarge)
 #   ${accel_instance_type}  - Accelerated node instance type (e.g. ml.g5.8xlarge)
-#   ${gpu_count}            - GPUs per compute pod (1 for g5, 8 for p5)
-#   ${efa_count}            - EFA interfaces per compute pod (1 for g5, 32 for p5)
-#   ${gpu_gres}             - GRES string (e.g. gpu:a10g:1 or gpu:h100:8)
-#   ${replicas}             - Number of compute replicas (4 for g5, 2 for p5)
+#   ${gpu_count}            - GPUs per compute pod (auto-discovered from instance type)
+#   ${efa_count}            - EFA interfaces per compute pod (auto-discovered)
+#   ${gpu_gres}             - GRES string (e.g. gpu:a10g:1, gpu:h100:8, gpu:l4:4)
+#   ${replicas}             - Number of compute replicas (matches --instance-count)
 #   ${pvc_name}             - PVC name for FSx for Lustre (e.g. fsx-claim)
 
 # Inter-pod anti-affinity and node affinity for non-compute components
