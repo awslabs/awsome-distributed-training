@@ -1,0 +1,171 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  name: rayml-efa
+  labels:
+    controller-tools.k8s.io: "1.0"
+  annotations:
+    karpenter.sh/do-not-disrupt: "true"
+spec:
+  # Ray head pod template
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+      metrics-export-port: '8080'
+      num-gpus: "0"
+    template:
+      spec:
+        nodeSelector:
+          node.kubernetes.io/instance-type: ${INSTANCE_TYPE}
+          sagemaker.amazonaws.com/node-health-status: Schedulable
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+          fsGroup: 0
+        containers:
+        - name: ray-head
+          image: ${REGISTRY}${IMAGE}:${TAG}
+          env:
+            ## PROMETHEUS AND GRAFANA — AWS MANAGED SERVICES
+            - name: RAY_GRAFANA_IFRAME_HOST
+              value: http://localhost:3000
+            - name: RAY_GRAFANA_HOST
+              value: http://prometheus-grafana.prometheus-system.svc:80
+            - name: RAY_PROMETHEUS_HOST
+              value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
+            ## EFA AND NCCL CONFIGURATION
+            - name: FI_PROVIDER
+              value: "efa"
+            - name: FI_EFA_USE_DEVICE_RDMA
+              value: "${FI_EFA_USE_DEVICE_RDMA}"
+            - name: FI_EFA_FORK_SAFE
+              value: "1"
+            - name: NCCL_PROTO
+              value: "simple"
+            - name: NCCL_SOCKET_IFNAME
+              value: "^docker,lo,veth"
+            - name: NCCL_DEBUG
+              value: "INFO"
+            - name: TORCH_NCCL_DUMP_ON_TIMEOUT
+              value: "1"
+            - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
+              value: "1"
+            - name: HF_TOKEN
+              value: ${HF_TOKEN}
+            ## OpenRLHF-specific: prevent Ray from setting CUDA_VISIBLE_DEVICES
+            ## (avoids issues with DeepSpeed + vLLM Hybrid Engine GPU mapping)
+            - name: RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES
+              value: "1"
+            ## Disable Ray OOM killer — DeepSpeed ZeRO-3 with adam_offload for
+            ## large models (20B+) needs most of the host RAM during init.
+            ## The peak is transient and settles down after initialization.
+            - name: RAY_memory_monitor_refresh_ms
+              value: "0"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          resources:
+            limits:
+              cpu: ${HEAD_CPU}
+              memory: ${HEAD_MEMORY}
+            requests:
+              cpu: ${HEAD_CPU}
+              memory: ${HEAD_MEMORY}
+          ports:
+          - containerPort: 6379
+            name: gcs-server
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
+          - containerPort: 8000
+            name: serve
+          - containerPort: 8080
+            name: metrics
+          volumeMounts:
+          - name: fsx-storage
+            mountPath: /fsx
+          - name: ray-logs
+            mountPath: /tmp/ray
+        volumes:
+          - name: ray-logs
+            emptyDir: {}
+          - name: fsx-storage
+            persistentVolumeClaim:
+              claimName: fsx-claim
+  workerGroupSpecs:
+  - replicas: $NUM_NODES
+    minReplicas: 1
+    maxReplicas: 10
+    groupName: gpu-group
+    rayStartParams:
+      num-gpus: "$NUM_GPU_PER_NODE"
+      metrics-export-port: '8080'
+    template:
+      spec:
+        nodeSelector:
+          node.kubernetes.io/instance-type: ${INSTANCE_TYPE}
+          sagemaker.amazonaws.com/node-health-status: Schedulable
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+          fsGroup: 0
+        containers:
+        - name: ray-worker
+          image: ${REGISTRY}${IMAGE}:${TAG}
+          env:
+            - name: FI_PROVIDER
+              value: "efa"
+            - name: FI_EFA_USE_DEVICE_RDMA
+              value: "${FI_EFA_USE_DEVICE_RDMA}"
+            - name: FI_EFA_FORK_SAFE
+              value: "1"
+            - name: NCCL_PROTO
+              value: "simple"
+            - name: NCCL_SOCKET_IFNAME
+              value: "^docker,lo,veth"
+            - name: NCCL_DEBUG
+              value: "INFO"
+            - name: TORCH_NCCL_DUMP_ON_TIMEOUT
+              value: "1"
+            - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
+              value: "1"
+            - name: HF_TOKEN
+              value: ${HF_TOKEN}
+            - name: RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES
+              value: "1"
+            - name: RAY_memory_monitor_refresh_ms
+              value: "0"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          resources:
+            limits:
+              cpu: ${WORKER_CPU}
+              memory: ${WORKER_MEMORY}
+              nvidia.com/gpu: $NUM_GPU_PER_NODE
+              vpc.amazonaws.com/efa: $NUM_EFA_PER_NODE
+            requests:
+              cpu: ${WORKER_CPU}
+              memory: ${WORKER_MEMORY}
+              nvidia.com/gpu: $NUM_GPU_PER_NODE
+              vpc.amazonaws.com/efa: $NUM_EFA_PER_NODE
+          ports:
+          - containerPort: 8080
+            name: metrics
+          volumeMounts:
+          - name: ray-logs
+            mountPath: /tmp/ray
+          - name: fsx-storage
+            mountPath: /fsx
+        volumes:
+        - name: fsx-storage
+          persistentVolumeClaim:
+            claimName: fsx-claim
+        - name: ray-logs
+          emptyDir: {}
