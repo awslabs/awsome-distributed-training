@@ -433,6 +433,148 @@ load 'helpers/setup'
 }
 
 ###########################
+## validate_cfn_template ##
+###########################
+
+@test "validate_cfn_template: succeeds when all params match template" {
+    # Resolve params to a temp file (same as deploy_cfn does)
+    local resolved_file="${TEST_TEMP_DIR}/resolved-params.json"
+    resolve_cfn_params \
+        "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.g5.8xlarge" 4 \
+        > "${resolved_file}"
+
+    run validate_cfn_template \
+        "https://aws-sagemaker-hyperpod-cluster-setup-us-west-2-prod.s3.us-west-2.amazonaws.com/templates/main-stack-eks-based-template.yaml" \
+        "${resolved_file}" \
+        "us-west-2"
+
+    assert_success
+    assert_output --partial "Template syntax: OK"
+    assert_output --partial "Validation: OK"
+}
+
+@test "validate_cfn_template: reports parameter counts" {
+    local resolved_file="${TEST_TEMP_DIR}/resolved-params.json"
+    resolve_cfn_params \
+        "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.g5.8xlarge" 4 \
+        > "${resolved_file}"
+
+    run validate_cfn_template \
+        "https://aws-sagemaker-hyperpod-cluster-setup-us-west-2-prod.s3.us-west-2.amazonaws.com/templates/main-stack-eks-based-template.yaml" \
+        "${resolved_file}" \
+        "us-west-2"
+
+    assert_success
+    assert_output --partial "40 provided, 40 in template"
+}
+
+@test "validate_cfn_template: fails when template URL is unreachable" {
+    local resolved_file="${TEST_TEMP_DIR}/resolved-params.json"
+    resolve_cfn_params \
+        "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.g5.8xlarge" 4 \
+        > "${resolved_file}"
+
+    run validate_cfn_template \
+        "https://invalid-bucket.s3.us-west-2.amazonaws.com/templates/missing.yaml" \
+        "${resolved_file}" \
+        "us-west-2"
+
+    assert_failure
+    assert_output --partial "Template validation failed"
+}
+
+@test "validate_cfn_template: fails when resolved params file not found" {
+    run validate_cfn_template \
+        "https://example.com/template.yaml" \
+        "/nonexistent/params.json" \
+        "us-west-2"
+
+    assert_failure
+    assert_output --partial "Resolved params file not found"
+}
+
+@test "validate_cfn_template: fails when template_url is empty" {
+    run validate_cfn_template "" "/tmp/dummy.json" "us-west-2"
+
+    assert_failure
+    assert_output --partial "template_url is required"
+}
+
+@test "validate_cfn_template: warns about extra params not in template" {
+    # Create params with an extra key the template doesn't know about
+    local resolved_file="${TEST_TEMP_DIR}/resolved-params.json"
+    resolve_cfn_params \
+        "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.g5.8xlarge" 4 \
+        > "${resolved_file}"
+
+    # Append an extra parameter
+    local modified_file="${TEST_TEMP_DIR}/modified-params.json"
+    jq '. + [{"ParameterKey": "BogusParameter", "ParameterValue": "test"}]' \
+        "${resolved_file}" > "${modified_file}"
+
+    run validate_cfn_template \
+        "https://aws-sagemaker-hyperpod-cluster-setup-us-west-2-prod.s3.us-west-2.amazonaws.com/templates/main-stack-eks-based-template.yaml" \
+        "${modified_file}" \
+        "us-west-2"
+
+    # Should succeed but with a warning
+    assert_success
+    assert_output --partial "WARNING: Parameters in params file not found in template"
+    assert_output --partial "BogusParameter"
+    assert_output --partial "Validation: OK"
+}
+
+@test "validate_cfn_template: fails when required params are missing" {
+    # Create params file missing required keys (HyperPodClusterName has no default)
+    local resolved_file="${TEST_TEMP_DIR}/resolved-params.json"
+    resolve_cfn_params \
+        "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.g5.8xlarge" 4 \
+        > "${resolved_file}"
+
+    # Remove HyperPodClusterName and ResourceNamePrefix (both required — no default)
+    local stripped_file="${TEST_TEMP_DIR}/stripped-params.json"
+    jq 'map(select(.ParameterKey != "HyperPodClusterName" and .ParameterKey != "ResourceNamePrefix"))' \
+        "${resolved_file}" > "${stripped_file}"
+
+    run validate_cfn_template \
+        "https://aws-sagemaker-hyperpod-cluster-setup-us-west-2-prod.s3.us-west-2.amazonaws.com/templates/main-stack-eks-based-template.yaml" \
+        "${stripped_file}" \
+        "us-west-2"
+
+    assert_failure
+    assert_output --partial "Required template parameters missing"
+    assert_output --partial "HyperPodClusterName"
+    assert_output --partial "ResourceNamePrefix"
+}
+
+@test "validate_cfn_template: succeeds when optional params are omitted" {
+    # Remove params that have defaults — should still pass
+    local resolved_file="${TEST_TEMP_DIR}/resolved-params.json"
+    resolve_cfn_params \
+        "${FIXTURE_DIR}/params.json" \
+        "usw2-az1,usw2-az2" "usw2-az2" "ml.g5.8xlarge" 4 \
+        > "${resolved_file}"
+
+    # Remove StorageCapacity (has default "1200")
+    local reduced_file="${TEST_TEMP_DIR}/reduced-params.json"
+    jq 'map(select(.ParameterKey != "StorageCapacity"))' \
+        "${resolved_file}" > "${reduced_file}"
+
+    run validate_cfn_template \
+        "https://aws-sagemaker-hyperpod-cluster-setup-us-west-2-prod.s3.us-west-2.amazonaws.com/templates/main-stack-eks-based-template.yaml" \
+        "${reduced_file}" \
+        "us-west-2"
+
+    assert_success
+    assert_output --partial "Validation: OK"
+}
+
+###########################
 ## resolve_tf_vars ########
 ###########################
 

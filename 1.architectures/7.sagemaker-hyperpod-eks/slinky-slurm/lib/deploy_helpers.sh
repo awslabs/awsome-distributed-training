@@ -285,6 +285,121 @@ resolve_cfn_params() {
 }
 
 ###########################
+## CFN Template Validation
+###########################
+
+# validate_cfn_template <template_url> <resolved_params_file> <region>
+# Validates that the S3-hosted CFN template is reachable and cross-checks
+# parameter keys in the resolved params file against the template's declared
+# parameters.
+#
+# - Calls aws cloudformation validate-template --template-url
+# - Extracts expected parameter keys (and whether they have defaults)
+# - Warns about extra params in our file that the template doesn't expect
+# - Errors on required params (no default) missing from our file
+#
+# Returns 0 on success (with possible warnings), 1 on failure.
+validate_cfn_template() {
+    local template_url="$1"
+    local resolved_params_file="$2"
+    local region="${3:-us-west-2}"
+
+    if [[ -z "${template_url}" ]]; then
+        echo "Error: template_url is required" >&2
+        return 1
+    fi
+
+    if [[ ! -f "${resolved_params_file}" ]]; then
+        echo "Error: Resolved params file not found: ${resolved_params_file}" >&2
+        return 1
+    fi
+
+    echo "Validating CloudFormation template..."
+    echo "  Template URL: ${template_url}"
+
+    # Call validate-template to get parameter metadata
+    local validation_output
+    if ! validation_output=$(aws cloudformation validate-template \
+        --template-url "${template_url}" \
+        --region "${region}" 2>&1); then
+        echo "Error: Template validation failed:" >&2
+        echo "  ${validation_output}" >&2
+        return 1
+    fi
+
+    echo "  Template syntax: OK"
+
+    # Extract template parameter keys and their default status
+    # Parameters with DefaultValue set are optional; those without are required
+    local template_keys_with_defaults
+    template_keys_with_defaults=$(echo "${validation_output}" | jq -r '
+        .Parameters[] |
+        .ParameterKey + ":" + (if .DefaultValue then "has_default" else "no_default" end)
+    ' 2>/dev/null)
+
+    if [[ -z "${template_keys_with_defaults}" ]]; then
+        echo "  WARNING: Could not extract parameter metadata from template."
+        echo "  Skipping parameter cross-check."
+        return 0
+    fi
+
+    # Build sets of template keys
+    local template_keys
+    template_keys=$(echo "${template_keys_with_defaults}" | cut -d: -f1 | sort)
+
+    local required_keys
+    required_keys=$(echo "${template_keys_with_defaults}" | \
+        grep ':no_default$' | cut -d: -f1 | sort)
+
+    # Extract our resolved params keys
+    local our_keys
+    our_keys=$(jq -r '.[].ParameterKey' "${resolved_params_file}" | sort)
+
+    # Check for required template params missing from our file
+    local missing_required=""
+    while IFS= read -r key; do
+        [[ -z "${key}" ]] && continue
+        if ! echo "${our_keys}" | grep -q "^${key}$"; then
+            missing_required="${missing_required}    - ${key}\n"
+        fi
+    done <<< "${required_keys}"
+
+    if [[ -n "${missing_required}" ]]; then
+        echo "" >&2
+        echo "Error: Required template parameters missing from params file:" >&2
+        printf "%b" "${missing_required}" >&2
+        echo "  These parameters have no default value and must be provided." >&2
+        return 1
+    fi
+
+    # Check for extra params in our file not in the template (warnings only)
+    local extra_params=""
+    while IFS= read -r key; do
+        [[ -z "${key}" ]] && continue
+        if ! echo "${template_keys}" | grep -q "^${key}$"; then
+            extra_params="${extra_params}    - ${key}\n"
+        fi
+    done <<< "${our_keys}"
+
+    if [[ -n "${extra_params}" ]]; then
+        echo ""
+        echo "  WARNING: Parameters in params file not found in template:"
+        printf "%b" "${extra_params}"
+        echo "  These will be ignored by CloudFormation."
+    fi
+
+    # Summary
+    local our_count
+    our_count=$(echo "${our_keys}" | wc -l | tr -d ' ')
+    local template_count
+    template_count=$(echo "${template_keys}" | wc -l | tr -d ' ')
+    echo "  Parameter cross-check: ${our_count} provided, ${template_count} in template"
+    echo "  Validation: OK"
+
+    return 0
+}
+
+###########################
 ## TF Var Resolution ######
 ###########################
 

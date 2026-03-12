@@ -121,10 +121,17 @@ accelerated).
 5. Validates the specified `--az-id` against the resolved list
 6. Reads `params.json` (40 CloudFormation parameters, g5 defaults)
 7. Calls `resolve_cfn_params()` to substitute AZ IDs and instance overrides
-8. Calls `aws cloudformation create-stack` with the S3-hosted HyperPod
-   template
-9. Waits for stack completion (20-30 minutes)
-10. Extracts outputs to `env_vars.sh`
+8. Calls `validate_cfn_template()` to:
+   - Validate the S3-hosted template is reachable and syntactically valid
+     via `aws cloudformation validate-template --template-url`
+   - Cross-check parameter keys in the resolved params against the
+     template's declared parameters
+   - Error if required parameters (no default value) are missing
+   - Warn if extra parameters are provided that the template doesn't expect
+9. Calls `aws cloudformation create-stack` (or `update-stack` for existing
+   stacks) with the S3-hosted HyperPod template
+10. Waits for stack completion (20-30 minutes)
+11. Extracts outputs to `env_vars.sh`
 
 ### Terraform Path
 
@@ -178,11 +185,13 @@ kubectl get nodes -o wide
 | `env_vars.sh` not created | Script failed before output extraction | Check the script output for errors and re-run |
 | AZ ID validation warning | Specified AZ not in the region | Use one of the AZ IDs shown in the "Available AZs" message |
 | Stack already exists | Previous deployment not cleaned up | Run `destroy.sh` first, or use a different `--stack-name` |
+| Template validation fails | S3-hosted template unreachable or params mismatch | Check network/credentials; review the missing/extra parameter warnings in the output |
 
 ## References
 
 - `deploy.sh` -- Main infrastructure deployment script
 - `lib/deploy_helpers.sh` -- Helper functions (`resolve_instance_profile`,
-  `resolve_cfn_params`, `resolve_tf_vars`, `validate_az_id`, `check_command`)
+  `resolve_cfn_params`, `resolve_tf_vars`, `validate_az_id`,
+  `validate_cfn_template`, `check_command`)
 - `params.json` -- CloudFormation parameters (40 params, g5 defaults)
 - `custom.tfvars` -- Terraform variables (g5 defaults)

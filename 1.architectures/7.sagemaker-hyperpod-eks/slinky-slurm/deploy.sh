@@ -256,6 +256,16 @@ deploy_cfn() {
     # Construct the S3 template URL
     local template_url="https://aws-sagemaker-hyperpod-cluster-setup-${AWS_REGION}-prod.s3.${AWS_REGION}.amazonaws.com/templates/main-stack-eks-based-template.yaml"
 
+    # Validate the template and cross-check parameter keys
+    if ! validate_cfn_template "${template_url}" "${resolved_file}" "${AWS_REGION}"; then
+        echo ""
+        echo "Error: CloudFormation template validation failed."
+        echo "  Fix the issues above and re-run."
+        rm -f "${resolved_file}"
+        exit 1
+    fi
+
+    echo ""
     echo "Deploying CloudFormation stack '${STACK_NAME}'..."
     echo "  Template: ${template_url}"
     echo ""

@@ -170,8 +170,8 @@ aws cloudformation validate-template \
 ```
 
 **Acceptance criteria:**
-- [ ] Template validation succeeds
-- [ ] All required parameters are provided in both params files
+- [x] Template validation succeeds
+- [x] All required parameters are provided in both params files
 
 ## Open Questions
 
