@@ -260,23 +260,60 @@ deploy_cfn() {
     echo "  Template: ${template_url}"
     echo ""
 
-    aws cloudformation create-stack \
-        --region "${AWS_REGION}" \
+    # Check if the stack already exists to choose create vs update
+    local stack_status
+    stack_status=$(aws cloudformation describe-stacks \
         --stack-name "${STACK_NAME}" \
-        --template-url "${template_url}" \
-        --parameters "file://${resolved_file}" \
-        --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
-
-    echo ""
-    echo "Stack creation initiated. Waiting for completion..."
-    echo "  (This typically takes 20-30 minutes)"
-    echo ""
-
-    aws cloudformation wait stack-create-complete \
         --region "${AWS_REGION}" \
-        --stack-name "${STACK_NAME}"
+        --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "DOES_NOT_EXIST")
 
-    echo "Stack '${STACK_NAME}' created successfully."
+    if [[ "${stack_status}" == "DOES_NOT_EXIST" ]]; then
+        echo "  Creating new stack..."
+        aws cloudformation create-stack \
+            --region "${AWS_REGION}" \
+            --stack-name "${STACK_NAME}" \
+            --template-url "${template_url}" \
+            --parameters "file://${resolved_file}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+
+        echo ""
+        echo "Stack creation initiated. Waiting for completion..."
+        echo "  (This typically takes 20-30 minutes)"
+        echo ""
+
+        aws cloudformation wait stack-create-complete \
+            --region "${AWS_REGION}" \
+            --stack-name "${STACK_NAME}"
+
+        echo "Stack '${STACK_NAME}' created successfully."
+    elif [[ "${stack_status}" =~ ^(CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE)$ ]]; then
+        echo "  Stack already exists (status: ${stack_status}). Updating..."
+        if aws cloudformation update-stack \
+            --region "${AWS_REGION}" \
+            --stack-name "${STACK_NAME}" \
+            --template-url "${template_url}" \
+            --parameters "file://${resolved_file}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND 2>&1 | \
+            grep -q "No updates are to be performed"; then
+            echo "  No updates needed — stack is already up to date."
+        else
+            echo ""
+            echo "Stack update initiated. Waiting for completion..."
+            echo ""
+
+            aws cloudformation wait stack-update-complete \
+                --region "${AWS_REGION}" \
+                --stack-name "${STACK_NAME}"
+
+            echo "Stack '${STACK_NAME}' updated successfully."
+        fi
+    else
+        echo "Error: Stack '${STACK_NAME}' is in state '${stack_status}'."
+        echo "  Cannot create or update. Resolve the stack state manually."
+        rm -f "${resolved_file}"
+        exit 1
+    fi
+
     echo ""
 
     # Extract and export stack outputs

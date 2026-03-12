@@ -220,6 +220,9 @@ if [[ -n "${EKS_CLUSTER_NAME:-}" ]]; then
             --region "${AWS_REGION}" \
             --no-cli-pager 2>/dev/null || true
     fi
+else
+    echo "  WARNING: EKS_CLUSTER_NAME not set — skipping EBS CSI addon and"
+    echo "  Pod Identity cleanup. These resources may need manual deletion."
 fi
 
 # Delete gp3 StorageClass
@@ -265,6 +268,9 @@ if [[ -n "${EKS_CLUSTER_NAME:-}" ]]; then
             --region "${AWS_REGION}" \
             --no-cli-pager 2>/dev/null || true
     fi
+else
+    echo "  WARNING: EKS_CLUSTER_NAME not set — skipping LB Controller Pod"
+    echo "  Identity cleanup. This resource may need manual deletion."
 fi
 
 # Delete IAM role and policy

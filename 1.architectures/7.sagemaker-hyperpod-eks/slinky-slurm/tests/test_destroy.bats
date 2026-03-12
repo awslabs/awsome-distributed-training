@@ -138,3 +138,19 @@ load 'helpers/setup'
     run grep 'Delete FSx PVC' "${PROJECT_DIR}/destroy.sh"
     assert_success
 }
+
+###########################
+## EKS_CLUSTER_NAME warns #
+###########################
+
+@test "destroy.sh: warns when EKS_CLUSTER_NAME unset for EBS CSI cleanup" {
+    run grep -A2 'WARNING.*EKS_CLUSTER_NAME.*EBS CSI' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+    assert_output --partial "manual deletion"
+}
+
+@test "destroy.sh: warns when EKS_CLUSTER_NAME unset for LB Controller cleanup" {
+    run grep -A2 'WARNING.*EKS_CLUSTER_NAME.*LB Controller' "${PROJECT_DIR}/destroy.sh"
+    assert_success
+    assert_output --partial "manual deletion"
+}

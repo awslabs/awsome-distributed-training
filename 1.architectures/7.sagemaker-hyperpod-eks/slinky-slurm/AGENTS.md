@@ -16,12 +16,17 @@ instance type via `--instance-type` and `--instance-count`.
 
 Key automation scripts:
 - **`deploy.sh`** — Infrastructure deployment via CloudFormation or Terraform;
-  supports `--training-plan <name>` for reserved capacity (auto-resolves ARN and AZ)
+  supports `--training-plan <name>` for reserved capacity (auto-resolves ARN and AZ);
+  CFN path is idempotent (create or update based on stack status)
 - **`setup.sh`** — Container image build (CodeBuild/local), SSH keys, Helm values generation
 - **`install.sh`** — cert-manager, AWS LB Controller (Pod Identity), subnet tagging,
-  FSx PVC, MariaDB, Slurm operator, Slurm cluster Helm installs, NLB config
+  FSx PVC, MariaDB, Slurm operator, Slurm cluster Helm installs, NLB config;
+  supports `--skip-cert-manager`, `--skip-lb-controller`, `--skip-ebs-csi` for
+  pre-installed components and `--cluster-name`/`--vpc-id` for bring-your-own-cluster;
+  uses `helm upgrade --install` for idempotent operations
 - **`destroy.sh`** — Reverse teardown of all deployed resources (including LB Controller
-  Pod Identity + IAM, cert-manager, and FSx PVC)
+  Pod Identity + IAM, cert-manager, and FSx PVC); warns when `EKS_CLUSTER_NAME` is
+  unset and Pod Identity / addon cleanup is skipped
 - **`lib/deploy_helpers.sh`** — Extracted testable functions sourced by `deploy.sh` and `setup.sh`
 - **`params.json`** — CloudFormation parameters (40 params, g5 defaults)
 - **`custom.tfvars`** — Terraform variables (g5 defaults)
@@ -103,13 +108,14 @@ bats --verbose-run tests/test_deploy.bats
 ```
 
 Test structure:
-- `tests/test_deploy.bats` — 68 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
+- `tests/test_deploy.bats` — 72 unit tests for `deploy.sh` and `lib/deploy_helpers.sh`
 - `tests/test_setup.bats` — 13 unit tests for `setup.sh` argument parsing, profile
   resolution, and template substitution
-- `tests/test_install.bats` — 21 unit tests for `install.sh` argument parsing, version
-  constants, install order, `env_vars.sh` dependency validation, and EBS CSI/gp3 phases
-- `tests/test_destroy.bats` — 18 unit tests for `destroy.sh` argument parsing, teardown
-  order, IAM cleanup, and CodeBuild TF destroy
+- `tests/test_install.bats` — 49 unit tests for `install.sh` argument parsing, version
+  constants, install order, skip flags, existing cluster support, `helm upgrade --install`,
+  IAM idempotency, `env_vars.sh` dependency validation, and EBS CSI/gp3 phases
+- `tests/test_destroy.bats` — 20 unit tests for `destroy.sh` argument parsing, teardown
+  order, IAM cleanup, EKS_CLUSTER_NAME warnings, and CodeBuild TF destroy
 - `tests/fixtures/` — Independent copies of `params.json`, `custom.tfvars`, and
   `slurm-values.yaml.template` for test isolation
 - `tests/helpers/setup.bash` — Common bats setup/teardown (loads helpers, creates temp dir,

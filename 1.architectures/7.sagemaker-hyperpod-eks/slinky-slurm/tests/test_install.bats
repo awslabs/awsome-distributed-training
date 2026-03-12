@@ -164,3 +164,200 @@ load 'helpers/setup'
     run grep 'VPC_ID' "${PROJECT_DIR}/install.sh"
     assert_success
 }
+
+###########################
+## skip flags #############
+###########################
+
+@test "install.sh: --help mentions --skip-cert-manager" {
+    run bash "${PROJECT_DIR}/install.sh" --help
+    assert_success
+    assert_output --partial "--skip-cert-manager"
+}
+
+@test "install.sh: --help mentions --skip-lb-controller" {
+    run bash "${PROJECT_DIR}/install.sh" --help
+    assert_success
+    assert_output --partial "--skip-lb-controller"
+}
+
+@test "install.sh: --help mentions --skip-ebs-csi" {
+    run bash "${PROJECT_DIR}/install.sh" --help
+    assert_success
+    assert_output --partial "--skip-ebs-csi"
+}
+
+@test "install.sh: defines SKIP_CERT_MANAGER default" {
+    run grep 'SKIP_CERT_MANAGER=false' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: defines SKIP_LB_CONTROLLER default" {
+    run grep 'SKIP_LB_CONTROLLER=false' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: defines SKIP_EBS_CSI default" {
+    run grep 'SKIP_EBS_CSI=false' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: --skip-cert-manager sets SKIP_CERT_MANAGER=true" {
+    run grep -A1 '\-\-skip-cert-manager)' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'SKIP_CERT_MANAGER=true'
+}
+
+@test "install.sh: --skip-lb-controller sets SKIP_LB_CONTROLLER=true" {
+    run grep -A1 '\-\-skip-lb-controller)' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'SKIP_LB_CONTROLLER=true'
+}
+
+@test "install.sh: --skip-ebs-csi sets SKIP_EBS_CSI=true" {
+    run grep -A1 '\-\-skip-ebs-csi)' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'SKIP_EBS_CSI=true'
+}
+
+@test "install.sh: cert-manager section has skip guard" {
+    run grep -A1 'SKIP_CERT_MANAGER.*true' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'Skipping cert-manager'
+}
+
+@test "install.sh: LB Controller section has skip guard" {
+    run grep -A1 'SKIP_LB_CONTROLLER.*true' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'Skipping subnet tagging and LB Controller'
+}
+
+@test "install.sh: EBS CSI section has skip guard" {
+    run grep 'Skipping EBS CSI driver' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+###########################
+## existing cluster flags #
+###########################
+
+@test "install.sh: --help mentions --cluster-name" {
+    run bash "${PROJECT_DIR}/install.sh" --help
+    assert_success
+    assert_output --partial "--cluster-name"
+}
+
+@test "install.sh: --help mentions --vpc-id" {
+    run bash "${PROJECT_DIR}/install.sh" --help
+    assert_success
+    assert_output --partial "--vpc-id"
+}
+
+@test "install.sh: --help shows bring your own cluster example" {
+    run bash "${PROJECT_DIR}/install.sh" --help
+    assert_success
+    assert_output --partial "Bring your own cluster"
+}
+
+@test "install.sh: defines CLUSTER_NAME_OVERRIDE default" {
+    run grep 'CLUSTER_NAME_OVERRIDE=""' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: defines VPC_ID_OVERRIDE default" {
+    run grep 'VPC_ID_OVERRIDE=""' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: --cluster-name overrides EKS_CLUSTER_NAME" {
+    run grep 'CLUSTER_NAME_OVERRIDE' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'EKS_CLUSTER_NAME'
+}
+
+@test "install.sh: --vpc-id overrides VPC_ID" {
+    run grep 'VPC_ID_OVERRIDE' "${PROJECT_DIR}/install.sh"
+    assert_success
+    assert_output --partial 'VPC_ID'
+}
+
+@test "install.sh: error message mentions --cluster-name" {
+    run grep '\-\-cluster-name' "${PROJECT_DIR}/install.sh"
+    assert_success
+    # Should appear in both the arg parser and the error hint
+    assert_output --partial 'pass --cluster-name'
+}
+
+@test "install.sh: error message mentions --vpc-id" {
+    run grep 'pass --vpc-id' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+###########################
+## helm upgrade --install #
+###########################
+
+@test "install.sh: uses helm upgrade --install for cert-manager" {
+    run grep 'helm upgrade --install cert-manager' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: uses helm upgrade --install for LB Controller" {
+    run grep 'helm upgrade --install aws-load-balancer-controller' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: uses helm upgrade --install for MariaDB operator" {
+    run grep 'helm upgrade --install mariadb-operator' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: uses helm upgrade --install for Slurm operator" {
+    run grep 'helm upgrade --install slurm-operator' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+@test "install.sh: Slurm cluster chart still uses helm status guard" {
+    # The Slurm cluster itself is guarded to prevent accidental upgrades
+    run grep 'helm status slurm -n slurm' "${PROJECT_DIR}/install.sh"
+    assert_success
+}
+
+###########################
+## IAM idempotency ########
+###########################
+
+@test "install.sh: LB Controller role re-attaches policy when already exists" {
+    # When the IAM role already exists, the script should still try
+    # attaching the policy (handles partial failure on previous run)
+    local in_else=false
+    while IFS= read -r line; do
+        if [[ "${line}" =~ "IAM role already exists: \${LB_CONTROLLER_IAM_ROLE_NAME}" ]]; then
+            in_else=true
+        fi
+        if [[ "${in_else}" == "true" && "${line}" =~ "attach-role-policy" ]]; then
+            return 0
+        fi
+        # Stop looking after next major section
+        if [[ "${in_else}" == "true" && "${line}" =~ "LB_ROLE_ARN=" ]]; then
+            break
+        fi
+    done < "${PROJECT_DIR}/install.sh"
+    fail "Expected attach-role-policy in IAM role 'already exists' branch"
+}
+
+@test "install.sh: EBS CSI role re-attaches policy when already exists" {
+    local in_else=false
+    while IFS= read -r line; do
+        if [[ "${line}" =~ "IAM role already exists: \${EBS_CSI_IAM_ROLE_NAME}" ]]; then
+            in_else=true
+        fi
+        if [[ "${in_else}" == "true" && "${line}" =~ "attach-role-policy" ]]; then
+            return 0
+        fi
+        if [[ "${in_else}" == "true" && "${line}" =~ "EBS_CSI_ROLE_ARN=" ]]; then
+            break
+        fi
+    done < "${PROJECT_DIR}/install.sh"
+    fail "Expected attach-role-policy in EBS CSI IAM role 'already exists' branch"
+}

@@ -719,3 +719,27 @@ load 'helpers/setup'
     assert_failure
     assert_output --partial "Error: --infra is required"
 }
+
+###########################
+## CFN idempotency ########
+###########################
+
+@test "deploy.sh: deploy_cfn checks for existing stack before create" {
+    run grep 'DOES_NOT_EXIST' "${PROJECT_DIR}/deploy.sh"
+    assert_success
+}
+
+@test "deploy.sh: deploy_cfn uses update-stack for existing stacks" {
+    run grep 'update-stack' "${PROJECT_DIR}/deploy.sh"
+    assert_success
+}
+
+@test "deploy.sh: deploy_cfn handles 'No updates' gracefully" {
+    run grep 'No updates are to be performed' "${PROJECT_DIR}/deploy.sh"
+    assert_success
+}
+
+@test "deploy.sh: deploy_cfn rejects stacks in bad states" {
+    run grep 'Cannot create or update' "${PROJECT_DIR}/deploy.sh"
+    assert_success
+}
