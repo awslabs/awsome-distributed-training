@@ -38,7 +38,7 @@ def create_single_config(
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    with open("template/base_config.json", "r") as f:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "template", "base_config.json"), "r") as f:
         base_config = json.load(f)
 
     config_content = deepcopy(base_config)

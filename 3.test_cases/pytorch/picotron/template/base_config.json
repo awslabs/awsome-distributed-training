@@ -1,0 +1,52 @@
+{
+    "distributed": {
+        "tp_size": 1,
+        "cp_size": 1,
+        "pp_size": 1,
+        "dp_size": 1,
+        "pp_engine": "1f1b",
+        "backend": "nccl",
+        "use_cpu": false
+    },
+    "model": {
+        "name": "HuggingFaceTB/SmolLM-360M-Instruct",
+        "num_hidden_layers": 16,
+        "num_attention_heads": 16,
+        "num_key_value_heads": 4,
+        "dtype": "bfloat16",
+        "use_flash_attention": true,
+        "use_fused_adam": true
+    },
+    "training": {
+        "seed": 42,
+        "learning_rate": 3e-4,
+        "total_train_steps": 200,
+        "seq_length": 1024,
+        "micro_batch_size": 32,
+        "gradient_accumulation_steps": 1,
+        "num_samples": 400000,
+        "max_tokens": null
+    },
+    "dataset": {
+        "name": "roneneldan/TinyStories",
+        "subset_name": null,
+        "num_workers": 0,
+        "num_proc": 1
+    },
+    "checkpoint": {
+        "save_dir": "ckpt",
+        "save_frequency": 300,
+        "load_path": ""
+    },
+    "logging": {
+        "use_wandb": false,
+        "project_name": "picotron",
+        "run_name": null
+    },
+    "environment": {
+        "OMP_NUM_THREADS": "1",
+        "TOKENIZERS_PARALLELISM": "false",
+        "FLASH_ATTEN": "1",
+        "HF_TOKEN": null
+    }
+}
