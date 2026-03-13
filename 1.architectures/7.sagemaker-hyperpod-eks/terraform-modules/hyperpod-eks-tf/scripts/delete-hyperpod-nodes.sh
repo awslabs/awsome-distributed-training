@@ -469,10 +469,18 @@ fi
 # ─── Terraform Apply ─────────────────────────────────────────────────────────
 
 TF_DIR="$(dirname "$TFVARS_FILE")"
+TFVARS_BASENAME="$(basename "$TFVARS_FILE")"
+
+# Terraform auto-loads terraform.tfvars and *.auto.tfvars — no -var-file needed.
+# For any other filename, we must pass -var-file explicitly.
+VAR_FILE_FLAG=()
+if [[ "$TFVARS_BASENAME" != "terraform.tfvars" && "$TFVARS_BASENAME" != *.auto.tfvars ]]; then
+    VAR_FILE_FLAG=(-var-file="$TFVARS_BASENAME")
+fi
 
 if [[ "$AUTO_APPLY" == true ]]; then
-    log_info "Running terraform apply -auto-approve in $TF_DIR..."
-    (cd "$TF_DIR" && terraform apply -auto-approve) || {
+    log_info "Running terraform apply -auto-approve ${VAR_FILE_FLAG[*]} in $TF_DIR..."
+    (cd "$TF_DIR" && terraform apply -auto-approve "${VAR_FILE_FLAG[@]}") || {
         log_error "terraform apply failed. Check the output above."
         log_error "Your tfvars file has already been updated. You may need to run terraform apply manually."
         exit 1
@@ -486,8 +494,13 @@ else
     echo "║  Run the following to sync Terraform state:             ║"
     echo "║                                                         ║"
     printf "║    cd %-49s ║\n" "$TF_DIR"
-    echo "║    terraform plan     # verify no unexpected changes    ║"
-    echo "║    terraform apply                                      ║"
+    if [[ ${#VAR_FILE_FLAG[@]} -gt 0 ]]; then
+        printf "║    terraform plan %-37s ║\n" "${VAR_FILE_FLAG[*]}  # verify no unexpected changes"
+        printf "║    terraform apply %-36s ║\n" "${VAR_FILE_FLAG[*]}"
+    else
+        echo "║    terraform plan     # verify no unexpected changes    ║"
+        echo "║    terraform apply                                      ║"
+    fi
     echo "╚══════════════════════════════════════════════════════════╝"
 fi
 
