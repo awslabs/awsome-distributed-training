@@ -1,10 +1,5 @@
 # MegatronLM Test Case
 
-## Instance Compatibility
-
-> For guidance on running this test case across different EC2 instance types,
-> see the [Instance Compatibility Guide](../../../docs/instance-compatibility.md).
-
 [MegatronLM](https://github.com/NVIDIA/Megatron-LM) is a framework from Nvidia designed for training large language models (LLMs). We recommend reading the following papers to understand the various tuning options available:
 
 - [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)

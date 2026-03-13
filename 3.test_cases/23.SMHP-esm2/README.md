@@ -1,17 +1,5 @@
 # How to finetune ESM2 with SageMaker Hyperpod using Amazon G5 instances
 
-## Tested Configurations
-
-| Instance | GPUs | Model | Status | Notes |
-|----------|------|-------|--------|-------|
-| g5.24xlarge | 4 x A10G 24 GB | ESM2 150M | Tested | Primary target |
-| g5.12xlarge | 4 x A10G 24 GB | ESM2 150M | Tested | See benchmark tables below |
-| p5.48xlarge | 8 x H100 80 GB | ESM2 150M | Tested | See benchmark tables below |
-
-> See the [Instance Compatibility Guide](../../docs/instance-compatibility.md)
-> for parameter adjustments needed across instance types.
-> For untested instance types, check the guide for parameter adjustment recommendations.
-
 ## What is SageMaker Hyperpod?
 [Amazon SageMaker Hyperpod](https://aws.amazon.com/sagemaker/hyperpod/) offers advanced training tools to help you accelerate scalable, reliable, and secure generative AI application development. It removes the undifferentiated heavy lifting involved in building and optimizing machine learning (ML) infrastructure for training foundation models (FMs) significantly reducing training time. SageMaker Hyperpod ensure customers can continue FM training uninterrupted by periodically saving checkpoints. When a hardware failure occurs during training, SageMaker Hyperpod automatically detects the failure, repairs, or replaces the faulty instance, and resumes the training from the last saved checkpoint, removing the need for customers to manually manage this process and helping them train for week or months in a distributed setting without disruption.
 

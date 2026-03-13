@@ -3,11 +3,6 @@
 This test case demonstrates distributed training of [Picotron](https://github.com/huggingface/picotron), a distributed training framework for education and research experimentation. Picotron is designed for training speed, scalability, and memory efficiency.
 
 
-## Instance Compatibility
-
-> For guidance on running this test case across different EC2 instance types,
-> see the [Instance Compatibility Guide](../../../docs/instance-compatibility.md).
-
 ## Build Environment
 
 The provided Dockerfile (`picotron.Dockerfile`) will set up the environment with all required dependencies:

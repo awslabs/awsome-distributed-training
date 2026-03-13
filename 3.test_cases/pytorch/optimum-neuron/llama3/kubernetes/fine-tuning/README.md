@@ -1,17 +1,5 @@
 ## PEFT Fine Tuning of Llama 3 on Amazon EKS with AWS Trainium
 
-### Tested Configurations
-
-| Instance | NeuronCores | TP Degree | Status | Notes |
-|----------|-------------|-----------|--------|-------|
-| trn1.32xlarge | 32 | 8 | Tested | |
-| trn1n.32xlarge | 32 | 8 | Tested | 16 EFA adapters |
-| trn2.48xlarge | 64 | 4 | Tested | |
-
-> See the [Instance Compatibility Guide](../../../../../../docs/instance-compatibility.md)
-> and [Trainium instance profile](../../../../../../docs/instance-profiles/trn1.md)
-> for details on Trainium hardware.
-
 This example demonstrates how to perform supervised fine tuning for Meta Llama 3.1 using Parameter-Efficient Fine Tuning (PEFT) on AWS Trainium with EKS. It uses [Hugging Face Optimum Neuron](https://huggingface.co/docs/optimum-neuron) to apply Low-Rank Adaptation (LoRA) for distributed training on Trainium.
 
 **Supported instances:** trn1.32xlarge, trn1n.32xlarge, trn2.48xlarge. Set the `INSTANCE_TYPE` variable in `generate-jobspec.sh` to match your cluster's instance type. Parallelism settings (tensor parallel degree, NeuronCore count) are derived automatically.

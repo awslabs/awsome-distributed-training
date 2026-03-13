@@ -1,16 +1,5 @@
 # Stable Diffusion Test Case
 
-## Tested Configurations
-
-| Instance | GPUs | Status | Notes |
-|----------|------|--------|-------|
-| p5.48xlarge | 8 x H100 80 GB | Tested | Scaling benchmarks available below |
-| p4de.24xlarge | 8 x A100 80 GB | Tested | Performance comparison available below |
-
-> See the [Instance Compatibility Guide](../../../../docs/instance-compatibility.md)
-> for parameter adjustments needed across instance types.
-> For untested instance types, check the guide for parameter adjustment recommendations.
-
 We will follow MosaicML's stable diffusion benchmarking scripts provided [here](https://github.com/mosaicml/diffusion-benchmark/tree/main). It uses the `'stabilityai/stable-diffusion-2-base'` model. You can check the number of parameters by executing:
 
 ```bash

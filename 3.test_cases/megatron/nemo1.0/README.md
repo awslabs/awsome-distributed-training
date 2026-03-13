@@ -17,16 +17,6 @@ Table of contents:
 - [8. References](#8-references)
 - [9. Authors / Reviewers](#9-authors--reviewers)
 
-## Tested Configurations
-
-| Instance | GPUs | Status | Notes |
-|----------|------|--------|-------|
-| p4de.24xlarge | 8 x A100 80 GB | Tested | Primary target |
-
-> See the [Instance Compatibility Guide](../../../docs/instance-compatibility.md)
-> for parameter adjustments needed across instance types.
-> For untested instance types, check the guide for parameter adjustment recommendations.
-
 ## 1. Pre-requisites
 
 The following pre-requisites are needed to run this example:

@@ -1,16 +1,5 @@
 # How to run continual pretraining of Llama3 using Amazon Trainium on Slurm
 
-## Tested Configurations
-
-| Instance | NeuronCores | Status | Notes |
-|----------|-------------|--------|-------|
-| trn1.32xlarge | 32 | Tested | 16 nodes used in example |
-
-> See the [Instance Compatibility Guide](../../../../../docs/instance-compatibility.md)
-> and [Trainium instance profile](../../../../../docs/instance-profiles/trn1.md)
-> for details on Trainium hardware.
-> For untested instance types, check the guide for parameter adjustment recommendations.
-
 ## Prerequisites
  
 

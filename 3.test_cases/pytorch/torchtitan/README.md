@@ -2,11 +2,6 @@
 
 [torchtitan](https://github.com/pytorch/torchtitan) is a reference architecture for large-scale LLM training using native PyTorch. It aims to showcase PyTorch's latest distributed training features in a clean, minimal code base. The library is designed to be simple to understand, use, and extend for different training purposes, with minimal changes required to the model code when applying various parallel processing techniques.
 
-## Instance Compatibility
-
-> For guidance on running this test case across different EC2 instance types,
-> see the [Instance Compatibility Guide](../../../docs/instance-compatibility.md).
-
 ## Key Features
 
 torchtitan offers several advanced capabilities:

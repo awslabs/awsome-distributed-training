@@ -10,38 +10,6 @@ This repository provides a complete setup for running reinforcement learning fro
 
 [Reinforcement Learning from Verifiable Rewards (RLVR)](https://arxiv.org/abs/2506.14245) is a training approach where models learn from tasks with objectively verifiable outcomes, such as math problems or code execution. Unlike human preference-based RL, RLVR uses ground-truth correctness as the reward signal, making it particularly effective for reasoning tasks.
 
-## Tested Configurations
-
-| Instance | GPUs | Model | Nodes | Key Settings | Status |
-|----------|------|-------|-------|-------------|--------|
-| p5en.48xlarge | 8 x H200 141 GB | Qwen3-8B | 4 | FSDP1, TP=2, ref_offload only | Tested |
-| g5.12xlarge | 4 x A10G 24 GB | gpt-oss-20b (MoE) | 3 workers + 1 head | FSDP2, full offload, TP=4, bf16 | Tested |
-
-> **Running on a different instance type?** See the
-> [Instance Compatibility Guide](../../../../../docs/instance-compatibility.md)
-> for the parameter changes needed when moving between instance families, and
-> the [instance profiles](../../../../../docs/instance-profiles/) for
-> per-instance hardware details and NCCL/EFA settings.
-> For untested instance types, check the guide for parameter adjustment recommendations.
->
-> **g5 users**: Running on g5.12xlarge (A10G 24 GB) requires significant
-> parameter changes including FSDP2 with full CPU offloading, TP=4,
-> enforce_eager=True, and NCCL_PROTO=simple. The key differences are:
->
-> | Parameter | p5en (80 GB) | g5 (24 GB) | Why |
-> |-----------|-------------|-----------|-----|
-> | FSDP strategy | `fsdp` (FSDP1) | `fsdp2` | FSDP1 disables CPUOffload for actor |
-> | `offload_policy` | not set | `True` | Enables FSDP2 CPU offloading |
-> | `model_dtype` | default (fp32) | `bf16` | Explicit bf16 halves memory |
-> | `enforce_eager` | `False` | `True` | CUDA graphs OOM on 24 GB |
-> | `tensor_parallel_size` | 2 | 4 | Shard across all 4 GPUs |
-> | `param_offload` | `False` | `True` | Offload params to CPU |
-> | `optimizer_offload` | `False` | `True` | Offload optimizer to CPU |
-> | `NCCL_PROTO` | default | `simple` | No GPUDirect RDMA on g5 |
-> | `save_freq` | 1 | 20+ | 117 GB/ckpt for 20B; fills disk fast |
-> | `WORKER_MEMORY` | 200 Gi+ | 150 Gi | g5.12xl allocatable ~168 Gi |
-> | `nnodes` | node count | worker count only | Head pod without GPUs causes NCCL hang |
-
 ## Getting started
 
 ### Prerequisites

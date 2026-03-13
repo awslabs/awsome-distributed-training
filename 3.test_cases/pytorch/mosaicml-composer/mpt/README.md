@@ -1,10 +1,5 @@
 # Mosaic Pretrained Transformers (MPT) Test Case <!-- omit in toc -->
 
-## Instance Compatibility
-
-> For guidance on running this test case across different EC2 instance types,
-> see the [Instance Compatibility Guide](../../../../docs/instance-compatibility.md).
-
 MPT are GPT-style models in [llm-foundry](https://github.com/mosaicml/llm-foundry/tree/main) with some special features -- [Flash Attention](https://arxiv.org/abs/2205.14135) for efficiency, [ALiBi](https://arxiv.org/abs/2108.12409) for context length extrapolation, and stability improvements to mitigate loss spikes.
 
 This project contains:

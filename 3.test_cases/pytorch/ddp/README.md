@@ -9,11 +9,6 @@ This example showcases [PyTorch DDP](https://pytorch.org/tutorials/beginner/ddp_
 - **CPU Training**: Uses the GLOO backend for distributed training on CPU nodes
 - **GPU Training**: Automatically switches to NCCL backend when GPUs are available, providing optimized multi-GPU training
 
-## Instance Compatibility
-
-> For guidance on running this test case across different EC2 instance types,
-> see the [Instance Compatibility Guide](../../../docs/instance-compatibility.md).
-
 ## Training
 
 ### Basic Usage

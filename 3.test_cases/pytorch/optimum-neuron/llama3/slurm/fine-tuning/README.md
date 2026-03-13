@@ -1,18 +1,5 @@
 ## PEFT Fine Tuning of Llama 3 on Slurm Cluster (trn1/trn2)
 
-### Tested Configurations
-
-| Instance | NeuronCores | TP Degree | Status | Notes |
-|----------|-------------|-----------|--------|-------|
-| trn1.32xlarge | 32 | 8 | Tested | 4 DP workers |
-| trn1n.32xlarge | 32 | 8 | Tested | 4 DP workers; 16 EFA adapters |
-| trn2.48xlarge | 64 | 4 | Tested | 16 DP workers |
-| trn2.3xlarge | 4 | 4 | Tested | 1 DP worker |
-
-> See the [Instance Compatibility Guide](../../../../../../docs/instance-compatibility.md)
-> and [Trainium instance profile](../../../../../../docs/instance-profiles/trn1.md)
-> for details on Trainium hardware.
-
 This example showcases how to fine tune Llama 3 models using AWS Trainium instances and [Hugging Face Optimum Neuron](https://huggingface.co/docs/optimum-neuron). Optimum Neuron is the interface between the Transformers library and AWS Accelerators including AWS Trainium and AWS Inferentia. It provides tools for model loading, training, and inference on single- and multi-accelerator settings.
 
 **Supported instances:** trn1.32xlarge, trn1n.32xlarge, trn2.48xlarge, trn2.3xlarge. The training script auto-detects the instance type and sets tensor parallelism accordingly.

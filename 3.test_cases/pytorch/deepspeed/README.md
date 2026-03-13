@@ -2,11 +2,6 @@
 
 [DeepSpeed](https://github.com/microsoft/DeepSpeed) enables world's most powerful language models like MT-530B and BLOOM. It is an easy-to-use deep learning optimization software suite that powers unprecedented scale and speed for both training and inference. `deepspeed` illustrates several example test cases for DeepSpeed training on AWS. 
 
-## Instance Compatibility
-
-> For guidance on running this test case across different EC2 instance types,
-> see the [Instance Compatibility Guide](../../../docs/instance-compatibility.md).
-
 ## 1. Preparation
 
 This guide assumes that you have the following:

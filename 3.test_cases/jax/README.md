@@ -2,11 +2,6 @@
 
 Ths directory contains a sample Dockerfile `jax_paxml.Dockerfile` to run [JAX](https://github.com/google/jax) and [Paxml](https://github.com/google/paxml) on AWS.
 
-## Instance Compatibility
-
-> For guidance on running this test case across different EC2 instance types,
-> see the [Instance Compatibility Guide](../../docs/instance-compatibility.md).
-
 ## Container description
 
 In principle, the reference `Dockerfile` does the following:
