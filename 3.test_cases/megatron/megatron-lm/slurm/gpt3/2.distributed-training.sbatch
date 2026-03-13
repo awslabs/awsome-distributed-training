@@ -14,7 +14,7 @@ set -ex;
 ###### User Variables #####
 ###########################
 
-GPUS_PER_NODE=8 # 4 for g5.12xlarge, 8 for p4de/p5/p5en
+GPUS_PER_NODE=${GPUS_PER_NODE:-8} # 4 for g5.12xlarge, 8 for p4de/p5/p5en
 NODES=${SLURM_JOB_NUM_NODES:-2}
 
 # configure TP/PP/GBS based on node count
