@@ -1,0 +1,100 @@
+#!/bin/bash
+# env_vars.template -- Copy to env_vars and customize for your environment.
+# env_vars is .gitignored and should NEVER be committed.
+#
+# Usage:
+#   cp env_vars.template env_vars
+#   vim env_vars          # fill in manual fields below
+#   source env_vars
+#
+# Then deploy with (from the kubernetes/ directory):
+#   ./deploy.sh <manifest>.yaml
+#   ./deploy.sh --dry-run <manifest>.yaml  # preview
+#   ./deploy.sh --delete <manifest>.yaml   # teardown
+
+# ============================================================================
+# Auto-detected (no manual entry needed)
+# ============================================================================
+export AWS_REGION=$(aws ec2 describe-availability-zones --output text --query 'AvailabilityZones[0].[RegionName]')
+export ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+export REGISTRY=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+export IMAGE_TAG=latest
+export IMAGE_URI=${REGISTRY}/nvrx-fsdp-training:${IMAGE_TAG}
+
+# ============================================================================
+# Model configuration
+# ============================================================================
+# GPT-2 (124M):    Recommended for smaller GPU instances (g5.8xlarge, A10G)
+#   MODEL_NAME=gpt2, MAX_SEQ_LENGTH=512, BATCH_SIZE=4
+#
+# LLaMA-3.1-8B:   Recommended for larger GPU instances (p4de, p5)
+#   MODEL_NAME=meta-llama/Llama-3.1-8B, MAX_SEQ_LENGTH=2048, BATCH_SIZE=1
+export MODEL_NAME=meta-llama/Llama-3.1-8B
+export MAX_SEQ_LENGTH=2048
+export BATCH_SIZE=1
+export LEARNING_RATE=2e-5
+
+# ============================================================================
+# Instance & cluster configuration (edit for your environment)
+# ============================================================================
+# Instance type for nodeSelector (must match your EKS node group labels)
+#
+# g5 profile (small-scale testing):
+#   INSTANCE_TYPE=g5.8xlarge  NODE_TYPE=g5-testing  GPU_PER_NODE=1  EFA_PER_NODE=0
+#   CPU_LIMIT=8  CPU_REQUEST=4  MEMORY_LIMIT=32Gi  MEMORY_REQUEST=16Gi
+#
+# p4de profile:
+#   INSTANCE_TYPE=p4de.24xlarge  NODE_TYPE=p4de-a100  GPU_PER_NODE=8  EFA_PER_NODE=4
+#   CPU_LIMIT=90  CPU_REQUEST=45  MEMORY_LIMIT=1000Gi  MEMORY_REQUEST=500Gi
+#
+# p5 profile:
+#   INSTANCE_TYPE=p5.48xlarge  NODE_TYPE=p5-h100  GPU_PER_NODE=8  EFA_PER_NODE=32
+#   CPU_LIMIT=180  CPU_REQUEST=90  MEMORY_LIMIT=1800Gi  MEMORY_REQUEST=900Gi
+#
+export INSTANCE_TYPE=p5.48xlarge
+export NODE_TYPE=p5-h100
+
+# Number of nodes (pods) in the training job
+export NUM_NODES=2
+
+# GPUs per node:  1 for g5.8xlarge, 8 for p4de/p5
+export GPU_PER_NODE=8
+
+# EFA adapters: 0 for g5, 4 for p4de, 32 for p5
+export EFA_PER_NODE=32
+
+# K8s namespace for training jobs
+export NAMESPACE=nvrx-training
+
+# FSx PVC name (must match name in your fsx-storage.yaml)
+export FSX_PVC_NAME=fsx-checkpoint-pvc
+
+# Node taint toleration value. Set to match your GPU node taints.
+# Leave empty if your GPU nodes have no taints.
+# Example: DEDICATED_TAINT_VALUE=p5 matches taint "dedicated=p5:NoSchedule"
+export DEDICATED_TAINT_VALUE=
+
+# ============================================================================
+# NCCL configuration
+# ============================================================================
+# NCCL auto-detects the best transport (EFA/socket).
+# For g5 (no EFA), NCCL falls back to sockets automatically.
+export NCCL_DEBUG=INFO
+
+# ============================================================================
+# Resource limits (adjust for your instance type -- see profiles above)
+# ============================================================================
+export CPU_LIMIT=180
+export CPU_REQUEST=90
+export MEMORY_LIMIT=1800Gi
+export MEMORY_REQUEST=900Gi
+
+# ============================================================================
+# Build configuration (optional -- for build_and_push.sh)
+# ============================================================================
+# If BUILD_HOST is set, builds happen remotely via SSH.
+# If empty, builds happen locally (requires Docker + ECR access).
+export BUILD_HOST=
+
+# Remote build directory (only used when BUILD_HOST is set)
+export BUILD_DIR="~/nvrx-build"

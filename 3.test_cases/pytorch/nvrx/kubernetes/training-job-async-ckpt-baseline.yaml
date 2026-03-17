@@ -1,0 +1,171 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-async-ckpt-baseline
+  namespace: ${NAMESPACE}
+spec:
+  parallelism: ${NUM_NODES}
+  completions: ${NUM_NODES}
+  completionMode: Indexed
+  ttlSecondsAfterFinished: 21600
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: training-async-ckpt-baseline
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: default
+      containers:
+      - name: training
+        image: ${IMAGE_URI}
+        imagePullPolicy: Always
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            # Determine rank from hostname
+            RANK=$(echo $HOSTNAME | grep -o '[0-9]*$')
+            echo "Rank: $RANK"
+            
+            if [ "$RANK" -eq "0" ]; then
+              # Rank 0: Use own IP and start immediately
+              export MASTER_ADDR=$POD_IP
+              export MASTER_PORT=29500
+              echo "Rank 0 - Master address: $MASTER_ADDR:$MASTER_PORT"
+              
+              # Wait a bit for rank 1 to be ready
+              sleep 10
+            else
+              # Rank 1: Wait for rank 0 to be ready
+              echo "Rank 1 - Waiting for rank 0..."
+              sleep 20
+              
+              # Get rank 0's IP from service endpoints (exclude own IP)
+              export MASTER_PORT=29500
+              
+              for i in {1..10}; do
+                MASTER_IP=$(getent hosts training-async-ckpt-baseline.${NAMESPACE}.svc.cluster.local | awk '{print $1}' | grep -v "$POD_IP" | head -1)
+                if [ ! -z "$MASTER_IP" ]; then
+                  echo "Rank 1 - Found rank 0 IP: $MASTER_IP (excluded own IP: $POD_IP)"
+                  export MASTER_ADDR=$MASTER_IP
+                  break
+                fi
+                echo "Rank 1 - Waiting for rank 0 service endpoint... ($i/10)"
+                sleep 5
+              done
+              
+              if [ -z "$MASTER_ADDR" ]; then
+                echo "ERROR: Could not find master address"
+                exit 1
+              fi
+              
+              echo "Rank 1 - Master address: $MASTER_ADDR:$MASTER_PORT"
+            fi
+            
+            # Run training with SYNC checkpointing (baseline for async comparison)
+            echo "Starting SYNC checkpoint baseline training..."
+            python -m torch.distributed.run \
+              --nproc_per_node=${GPU_PER_NODE} \
+              --nnodes=${NUM_NODES} \
+              --node_rank=$RANK \
+              --master_addr=$MASTER_ADDR \
+              --master_port=$MASTER_PORT \
+              /app/src/train_async_ckpt.py \
+              --model_name=${MODEL_NAME} \
+              --max_seq_length=${MAX_SEQ_LENGTH} \
+              --batch_size=${BATCH_SIZE} \
+              --learning_rate=${LEARNING_RATE} \
+              --use_async_checkpoint=false \
+              --max_steps=5000 \
+              --training_duration_minutes=120 \
+              --checkpoint_interval=1000
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: NCCL_DEBUG
+          value: "${NCCL_DEBUG}"
+        - name: NCCL_SOCKET_IFNAME
+          value: "^docker,lo,veth"
+        - name: NCCL_BUFFSIZE
+          value: "8388608"
+        - name: NCCL_P2P_NET_CHUNKSIZE
+          value: "2097152"
+        - name: FI_PROVIDER
+          value: "efa"
+        - name: NCCL_NVLS_ENABLE
+          value: "0"
+        - name: NCCL_TUNER_PLUGIN
+          value: "/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so"
+        - name: RDMAV_FORK_SAFE
+          value: "1"
+        - name: NCCL_NET_GDR_LEVEL
+          value: "5"
+        - name: FI_EFA_FORK_SAFE
+          value: "1"
+        - name: FI_LOG_LEVEL
+          value: "warn"
+        - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
+          value: "1"
+        - name: PYTORCH_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: HF_HOME
+          value: "/checkpoints/.cache"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: huggingface-token
+              key: token
+        resources:
+          limits:
+            nvidia.com/gpu: ${GPU_PER_NODE}
+            vpc.amazonaws.com/efa: ${EFA_PER_NODE}
+            memory: "${MEMORY_LIMIT}"
+            cpu: "${CPU_LIMIT}"
+          requests:
+            nvidia.com/gpu: ${GPU_PER_NODE}
+            vpc.amazonaws.com/efa: ${EFA_PER_NODE}
+            memory: "${MEMORY_REQUEST}"
+            cpu: "${CPU_REQUEST}"
+        volumeMounts:
+        - name: checkpoints
+          mountPath: /checkpoints
+        - name: shm
+          mountPath: /dev/shm
+        securityContext:
+          capabilities:
+            add:
+            - IPC_LOCK
+      volumes:
+      - name: checkpoints
+        persistentVolumeClaim:
+          claimName: ${FSX_PVC_NAME}
+      - name: shm
+        hostPath:
+          path: /dev/shm
+      nodeSelector:
+        node-type: ${NODE_TYPE}
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      - key: dedicated
+        operator: Equal
+        value: ${DEDICATED_TAINT_VALUE}
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-async-ckpt-baseline
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: training-async-ckpt-baseline
+  clusterIP: None
+  ports:
+  - port: 29500
+    targetPort: 29500

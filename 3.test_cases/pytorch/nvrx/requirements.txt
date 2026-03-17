@@ -1,0 +1,33 @@
+# Core ML frameworks - Compatible with PyTorch 2.9.0
+torch==2.9.0
+torchvision==0.24.0
+torchaudio==2.9.0
+
+# Distributed training
+accelerate==1.2.1
+
+# HuggingFace - Latest stable versions
+transformers==4.48.0
+datasets==3.2.0
+huggingface-hub==0.27.1
+tokenizers==0.21.0
+
+# Data processing
+numpy==1.26.4
+tqdm==4.67.1
+pandas==2.2.3
+pyarrow==18.1.0
+
+# AWS
+boto3==1.35.0
+botocore==1.35.0
+
+# Utilities
+pyyaml==6.0.2
+python-json-logger==2.0.7
+requests==2.32.3
+filelock==3.16.1
+packaging==24.2
+
+# NVRx will be installed separately in Dockerfile
+# nvidia-resiliency-ext==0.4.1

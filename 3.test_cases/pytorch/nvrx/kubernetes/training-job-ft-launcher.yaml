@@ -1,0 +1,196 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-ft-launcher
+  namespace: ${NAMESPACE}
+spec:
+  parallelism: ${NUM_NODES}
+  completions: ${NUM_NODES}
+  completionMode: Indexed
+  ttlSecondsAfterFinished: 21600
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: training-ft-launcher
+    spec:
+      restartPolicy: Never
+      serviceAccountName: default
+      containers:
+      - name: training
+        image: ${IMAGE_URI}
+        imagePullPolicy: Always
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            # Determine rank from Job completion index
+            RANK=$(echo $HOSTNAME | grep -o '[0-9]*$')
+            echo "Pod index: $RANK"
+
+            # Rendezvous configuration
+            RDZV_PORT=29500
+
+            if [ "$RANK" -eq "0" ]; then
+              RDZV_HOST=$POD_IP
+              RDZV_CONF="is_host=1"
+              echo "Rank 0 - Rendezvous host: $RDZV_HOST:$RDZV_PORT"
+              sleep 5
+            else
+              echo "Rank 1 - Waiting for rank 0..."
+              sleep 15
+
+              # Discover rank 0 IP from headless service DNS
+              for i in {1..10}; do
+                RDZV_HOST=$(getent hosts training-ft-launcher.${NAMESPACE}.svc.cluster.local | awk '{print $1}' | grep -v "$POD_IP" | head -1)
+                if [ ! -z "$RDZV_HOST" ]; then
+                  echo "Rank 1 - Found rank 0 IP: $RDZV_HOST (excluded own IP: $POD_IP)"
+                  break
+                fi
+                echo "Rank 1 - Waiting for rank 0 service endpoint... ($i/10)"
+                sleep 5
+              done
+
+              if [ -z "$RDZV_HOST" ]; then
+                echo "ERROR: Could not find rendezvous host"
+                exit 1
+              fi
+
+              RDZV_CONF="is_host=0"
+              echo "Rank 1 - Rendezvous host: $RDZV_HOST:$RDZV_PORT"
+            fi
+
+            # Required env vars
+            export NCCL_NVLS_ENABLE=0
+            export TORCH_CPP_LOG_LEVEL=ERROR
+
+            # PG_MASTER_ADDR: rank 0 pod IP for cross-pod process group TCPStore.
+            # ft_launcher sets MASTER_ADDR=localhost (per-pod), so workers need
+            # the actual rank 0 IP for the NCCL process group.
+            export PG_MASTER_ADDR=$RDZV_HOST
+
+            # Launch training via ft_launcher
+            #   --nnodes=2:2          Exactly 2 nodes required
+            #   --nproc_per_node=1    1 GPU per node
+            #   --max-restarts=20     ft_launcher can respawn workers up to 20 times
+            #   --rdzv_backend=c10d   Use c10d TCPStore for rendezvous
+            #   --ft-restart-policy=min-healthy   Only restart when healthy nodes < min
+            #   --ft-rank-heartbeat-timeout=900   Heartbeat timeout (must be > NCCL timeout)
+            #   --ft-initial-rank-heartbeat-timeout=1200   Initial timeout (model loading)
+            echo "Starting ft_launcher IN-JOB ONLY training..."
+            ft_launcher \
+              --nnodes=${NUM_NODES}:${NUM_NODES} \
+              --nproc_per_node=${GPU_PER_NODE} \
+              --max-restarts=20 \
+              --rdzv_backend=c10d \
+              --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
+              --rdzv-conf="$RDZV_CONF" \
+              --ft-restart-policy=min-healthy \
+              --ft-rank-heartbeat-timeout=900 \
+              --ft-initial-rank-heartbeat-timeout=1200 \
+              --monitor-interval=5 \
+              /app/src/train_ft_launcher.py \
+                --model_name=${MODEL_NAME} \
+                --max_seq_length=${MAX_SEQ_LENGTH} \
+                --batch_size=${BATCH_SIZE} \
+                --learning_rate=${LEARNING_RATE} \
+                --inject_faults \
+                --fault_count=5 \
+                --fault_seed=42 \
+                --fault_after_step=10 \
+                --fault_types=exception,hang \
+                --fault_type_weights=0.6,0.4 \
+                --max_steps=2000 \
+                --training_duration_minutes=120 \
+                --checkpoint_interval=500 \
+                --dataset_path=/checkpoints/c4_subset \
+                --nccl_timeout_seconds=60
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: NCCL_DEBUG
+          value: "${NCCL_DEBUG}"
+        - name: NCCL_SOCKET_IFNAME
+          value: "^docker,lo,veth"
+        - name: NCCL_BUFFSIZE
+          value: "8388608"
+        - name: NCCL_P2P_NET_CHUNKSIZE
+          value: "2097152"
+        - name: FI_PROVIDER
+          value: "efa"
+        - name: NCCL_NVLS_ENABLE
+          value: "0"
+        - name: NCCL_TUNER_PLUGIN
+          value: "/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so"
+        - name: RDMAV_FORK_SAFE
+          value: "1"
+        - name: NCCL_NET_GDR_LEVEL
+          value: "5"
+        - name: FI_EFA_FORK_SAFE
+          value: "1"
+        - name: FI_LOG_LEVEL
+          value: "warn"
+        - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
+          value: "1"
+        - name: PYTORCH_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: HF_HOME
+          value: "/checkpoints/.cache"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: huggingface-token
+              key: token
+        resources:
+          limits:
+            nvidia.com/gpu: ${GPU_PER_NODE}
+            vpc.amazonaws.com/efa: ${EFA_PER_NODE}
+            memory: "${MEMORY_LIMIT}"
+            cpu: "${CPU_LIMIT}"
+          requests:
+            nvidia.com/gpu: ${GPU_PER_NODE}
+            vpc.amazonaws.com/efa: ${EFA_PER_NODE}
+            memory: "${MEMORY_REQUEST}"
+            cpu: "${CPU_REQUEST}"
+        volumeMounts:
+        - name: checkpoints
+          mountPath: /checkpoints
+        - name: shm
+          mountPath: /dev/shm
+        securityContext:
+          capabilities:
+            add:
+            - IPC_LOCK
+      volumes:
+      - name: checkpoints
+        persistentVolumeClaim:
+          claimName: ${FSX_PVC_NAME}
+      - name: shm
+        hostPath:
+          path: /dev/shm
+      nodeSelector:
+        node-type: ${NODE_TYPE}
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      - key: dedicated
+        operator: Equal
+        value: ${DEDICATED_TAINT_VALUE}
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-ft-launcher
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: training-ft-launcher
+  clusterIP: None
+  ports:
+  - port: 29500
+    targetPort: 29500

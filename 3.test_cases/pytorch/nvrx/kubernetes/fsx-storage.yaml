@@ -1,0 +1,51 @@
+# FSx for Lustre Persistent Volume and Persistent Volume Claim
+#
+# This manifest connects your Kubernetes cluster to an existing FSx for Lustre
+# filesystem for shared checkpoint and dataset storage across training pods.
+#
+# Prerequisites:
+#   1. FSx for Lustre filesystem created in the same VPC/subnet as your nodes
+#   2. FSx CSI Driver installed: https://docs.aws.amazon.com/eks/latest/userguide/fsx-csi.html
+#      helm repo add aws-fsx-csi-driver https://kubernetes-sigs.github.io/aws-fsx-csi-driver
+#      helm install aws-fsx-csi-driver aws-fsx-csi-driver/aws-fsx-csi-driver -n kube-system
+#
+# Update the values below with your FSx filesystem details:
+#   - <YOUR-FSX-FILESYSTEM-ID>: e.g., fs-0123456789abcdef0
+#   - <YOUR-FSX-DNS-NAME>: e.g., fs-0123456789abcdef0.fsx.us-west-2.amazonaws.com
+#   - <YOUR-FSX-MOUNT-NAME>: e.g., abcd1234 (from FSx console > Filesystem > Mount name)
+#
+# Find these values:
+#   aws fsx describe-file-systems --query 'FileSystems[*].{Id:FileSystemId,DNS:DNSName,Mount:LustreConfiguration.MountName}'
+#
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: fsx-checkpoint-pv
+spec:
+  capacity:
+    storage: 1200Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  csi:
+    driver: fsx.csi.aws.com
+    volumeHandle: <YOUR-FSX-FILESYSTEM-ID>
+    volumeAttributes:
+      dnsname: <YOUR-FSX-DNS-NAME>
+      mountname: <YOUR-FSX-MOUNT-NAME>
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fsx-checkpoint-pvc
+  namespace: nvrx-training
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 1200Gi
+  volumeName: fsx-checkpoint-pv
