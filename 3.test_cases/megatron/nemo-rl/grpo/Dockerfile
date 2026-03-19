@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.10
 # NeMo RL Training Image — Multi-Architecture Buildx Pattern
 #
 # Production-ready Dockerfile for NeMo RL GRPO training with:
@@ -21,13 +22,13 @@
 #
 # Build:
 #   docker buildx build --platform linux/amd64 \
-#     -f docker/Dockerfile.nemo-rl-multiarch \
+#     -f Dockerfile \
 #     -t nemo-rl:latest .
 #
 # Build with push:
 #   docker buildx build --platform linux/amd64 \
-#     -f docker/Dockerfile.nemo-rl-multiarch \
-#     -t public.ecr.aws/v9l4g5s4/nemo-rl-workshop:latest \
+#     -f Dockerfile \
+#     -t <your-registry>/nemo-rl-workshop:latest \
 #     --push .
 #
 # Build args:
@@ -37,10 +38,10 @@
 #   UV_VERSION              uv package manager version
 #   PYTHON_VERSION          Python version (default: 3.12)
 #   OFI_NCCL_VERSION        aws-ofi-nccl version (default: v1.18.0)
+#   EFA_INSTALLER_VERSION   AWS EFA installer version (default: 1.47.0)
+#   GDRCOPY_VERSION         GDRCopy version tag (default: v2.5.1)
 #   MAX_JOBS                Parallel compilation limit (prevent OOM)
 #   EFA_INSTALL_MODE        "full" or "minimal" (default: full for P5en RDMA)
-
-# syntax=docker/dockerfile:1.10
 
 # ============================================================
 # Stage 1: Clone NeMo RL source (platform-independent)
@@ -224,6 +225,7 @@ FROM release AS efa
 
 ARG TARGETARCH
 ARG EFA_INSTALL_MODE="full"
+ARG EFA_INSTALLER_VERSION=1.47.0
 ARG OFI_NCCL_VERSION=v1.18.0
 ARG OFI_NCCL_PREFIX=/opt/aws-ofi-nccl
 
@@ -245,8 +247,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # GDRCopy — GPU Direct RDMA copy library (needed for EFA GDRDMA)
+ARG GDRCOPY_VERSION=v2.5.1
 RUN cd /tmp && \
-    git clone --depth 1 https://github.com/NVIDIA/gdrcopy.git && \
+    git clone --depth 1 --branch ${GDRCOPY_VERSION} https://github.com/NVIDIA/gdrcopy.git && \
     cd gdrcopy && \
     make PREFIX=/usr lib lib_install && \
     ldconfig && \
@@ -261,7 +264,7 @@ if [ "${EFA_INSTALL_MODE}" = "full" ]; then
     dpkg --purge --force-depends libfabric1-aws libfabric-aws-bin libfabric-aws-dev 2>/dev/null || true
     rm -rf /opt/amazon/efa
     cd /tmp
-    curl -sL https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz | tar xz
+    curl -sL https://efa-installer.amazonaws.com/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz | tar xz
     cd aws-efa-installer
     ./efa_installer.sh -y --skip-kmod --skip-limit-conf --no-verify
     echo "EFA full install: $(/opt/amazon/efa/bin/fi_info --version 2>&1 | head -1)"
@@ -269,7 +272,7 @@ if [ "${EFA_INSTALL_MODE}" = "full" ]; then
 else
     # Minimal mode: libfabric only, build ofi-nccl from source
     cd /tmp
-    curl -sL https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz | tar xz
+    curl -sL https://efa-installer.amazonaws.com/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz | tar xz
     cd aws-efa-installer
     ./efa_installer.sh -y --minimal --skip-kmod --skip-limit-conf --no-verify
     cd / && rm -rf /tmp/aws-efa-installer
@@ -314,6 +317,7 @@ ENV LD_LIBRARY_PATH="/opt/amazon/ofi-nccl/lib:/opt/amazon/efa/lib${LD_LIBRARY_PA
 ENV FI_PROVIDER=efa
 ENV FI_EFA_USE_DEVICE_RDMA=1
 ENV NCCL_NET_PLUGIN=ofi
+ENV NCCL_TUNER_PLUGIN=ofi
 ENV NCCL_SOCKET_IFNAME="^lo,docker,veth,eni"
 
 # H200/NVSwitch NCCL workarounds (required for P5en, harmless on P5)

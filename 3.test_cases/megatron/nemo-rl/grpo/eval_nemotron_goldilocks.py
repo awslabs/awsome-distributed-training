@@ -5,8 +5,18 @@ Evaluates base model and optionally the GRPO-trained LoRA checkpoint
 on 200 held-out math problems with Python-verified answers.
 
 Usage:
-  python3 eval_nemotron_goldilocks.py --base-only
-  python3 eval_nemotron_goldilocks.py --checkpoint-dir /shared/nvrx-demo/miracle-checkpoints
+  # Base model only:
+  python3 eval_nemotron_goldilocks.py --base-only --dataset /path/to/train.jsonl
+
+  # Compare base vs trained:
+  python3 eval_nemotron_goldilocks.py \\
+    --model nvidia/Nemotron-Mini-4B-Instruct \\
+    --dataset /path/to/goldilocks/train.jsonl \\
+    --checkpoint-dir /path/to/checkpoints \\
+    --output results.json
+
+All paths are configurable via CLI arguments. Defaults use SHARED_DIR env var
+(fallback: /shared/nvrx-demo) as the base directory.
 """
 
 import argparse
@@ -17,16 +27,18 @@ import sys
 import time
 from pathlib import Path
 
-os.environ.setdefault("HF_HOME", "/shared/nvrx-demo/hf_cache")
+_SHARED_DIR = os.environ.get("SHARED_DIR", "/shared/nvrx-demo")
+os.environ.setdefault("HF_HOME", os.path.join(_SHARED_DIR, "hf_cache"))
 
-MODEL = "nvidia/Nemotron-Mini-4B-Instruct"
-DATASET = "/shared/nvrx-demo/goldilocks/train.jsonl"
+DEFAULT_MODEL = "nvidia/Nemotron-Mini-4B-Instruct"
+DEFAULT_DATASET = os.path.join(_SHARED_DIR, "goldilocks", "train.jsonl")
+DEFAULT_CKPT_DIR = os.path.join(_SHARED_DIR, "phase2-checkpoints")
 N_EVAL = 200
 
 
-def load_eval_problems():
+def load_eval_problems(dataset_path):
     """Load last N problems from dataset as held-out eval set."""
-    with open(DATASET) as f:
+    with open(dataset_path) as f:
         lines = f.readlines()
     problems = []
     for line in lines[-N_EVAL:]:
@@ -151,17 +163,25 @@ def evaluate(model, tokenizer, problems, label):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default=MODEL)
-    parser.add_argument("--checkpoint-dir", default="/shared/nvrx-demo/overnight-checkpoints")
-    parser.add_argument("--base-only", action="store_true")
-    parser.add_argument("--output", default=None)
+    parser = argparse.ArgumentParser(
+        description="Evaluate Nemotron-Mini-4B on Goldilocks math problems"
+    )
+    parser.add_argument("--model", default=DEFAULT_MODEL,
+                        help="HuggingFace model name or local path")
+    parser.add_argument("--dataset", default=DEFAULT_DATASET,
+                        help="Path to Goldilocks JSONL dataset")
+    parser.add_argument("--checkpoint-dir", default=DEFAULT_CKPT_DIR,
+                        help="Directory containing step_* LoRA checkpoints")
+    parser.add_argument("--base-only", action="store_true",
+                        help="Only evaluate the base model (skip checkpoint)")
+    parser.add_argument("--output", default=None,
+                        help="Path to write JSON results")
     args = parser.parse_args()
 
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    problems = load_eval_problems()
+    problems = load_eval_problems(args.dataset)
     print("=" * 60)
     print(f"  Nemotron-Mini-4B Goldilocks Eval")
     print(f"  Model: {args.model}")

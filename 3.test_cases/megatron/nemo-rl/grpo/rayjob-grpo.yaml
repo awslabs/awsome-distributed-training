@@ -1,42 +1,33 @@
 # ============================================================
-# RayJob: Qwen2.5-1.5B GRPO + NVRx on P5en (H200)
+# RayJob: Nemotron-Mini-4B GRPO Training on P5en (H200)
 # ============================================================
-# Pattern: NVRx wrapper (no ft_launcher) + RayJob backoffLimit
-# EFA upgrade: head does runtime build + copies libs to FSx
-# Workers: pick up EFA libs from FSx via LD_LIBRARY_PATH
+# Runs NeMo RL GRPO training with fault tolerance via RayJob backoffLimit.
 #
-# NVRx features:
-#   - Heartbeat monitoring via run_grpo_nvrx.py
-#   - Straggler detection (NVRx Detector)
-#   - GPU health check at startup
-#   - NVSentinel event logging to FSx
+# Features:
 #   - Checkpoints on FSx for resume across retries
+#   - EFA RDMA networking with NCCL
+#   - Configurable via environment variables
 #
-# Demo flow:
-#   1. Deploy → head builds EFA (~2 min), training starts (~9s/step)
-#   2. Inject fault: kill -9 the run_grpo.py process
-#   3. RayJob detects failure, retries with fresh cluster
-#   4. Training resumes from latest FSx checkpoint
+# Setup:
+#   1. Copy rayjob_entrypoint.sh to shared storage:
+#      kubectl cp rayjob_entrypoint.sh <any-pod>:/shared/scripts/rayjob_entrypoint.sh
+#   2. Edit this file: set namespace, image, PVC name
+#   3. kubectl apply -f rayjob-grpo.yaml
 #
-# Fault injection:
-#   HEAD=$(kubectl get pod -n antonai -l app=grpo-nvrx-rayjob,ray.io/node-type=head \
-#     -o jsonpath='{.items[0].metadata.name}')
-#   kubectl exec $HEAD -n antonai -- bash -c \
-#     'PID=$(ps aux | grep "[r]un_grpo" | grep -v ft_launcher | \
-#      head -1 | awk "{print \$2}"); echo "Kill $PID"; kill -9 $PID'
-#
-# Deploy:
-#   kubectl apply -f p5en-rayjob-nvrx.yaml
+# Monitor:
+#   SUB=$(kubectl get pods -n <namespace> --no-headers | grep grpo-nvrx-rayjob- | \
+#     grep -v head | grep -v worker | awk '{print $1}' | head -1)
+#   kubectl logs $SUB -n <namespace> -f | grep "Avg Filtered Reward"
 # ============================================================
 apiVersion: ray.io/v1
 kind: RayJob
 metadata:
   name: grpo-nvrx-rayjob
-  namespace: antonai
+  namespace: default    # <-- change to your namespace
   labels:
     app: grpo-nvrx-rayjob
 spec:
-  entrypoint: bash /shared/nvrx-demo/scripts/rayjob_countdown_entrypoint.sh
+  entrypoint: bash /shared/scripts/rayjob_entrypoint.sh  # <-- path on shared storage (FSx)
   shutdownAfterJobFinishes: true
   ttlSecondsAfterFinished: 600
   activeDeadlineSeconds: 14400
@@ -65,7 +56,7 @@ spec:
               effect: "NoSchedule"
           containers:
             - name: ray-head
-              image: public.ecr.aws/v9l4g5s4/nemo-rl-workshop:p5en
+              image: <your-registry>/nemo-rl-workshop:latest  # <-- replace with your image
               imagePullPolicy: Always
               securityContext:
                 privileged: true
@@ -77,10 +68,12 @@ spec:
                 - containerPort: 10001
                   name: client
               env: &common-env
-                # EFA libs from FSx (built by head entrypoint)
+                # --- EFA / NCCL ---
                 - name: LD_LIBRARY_PATH
                   value: "/opt/amazon/ofi-nccl/lib:/opt/amazon/efa/lib:/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu"
                 - name: NCCL_NET_PLUGIN
+                  value: "ofi"
+                - name: NCCL_TUNER_PLUGIN
                   value: "ofi"
                 - name: NCCL_SOCKET_IFNAME
                   value: "^lo,docker,veth,eni"
@@ -106,16 +99,23 @@ spec:
                   value: "1"
                 - name: NCCL_NET_GDR_LEVEL
                   value: "PHB"
+                # --- H200/NVSwitch NCCL workarounds ---
                 - name: NCCL_CUMEM_ENABLE
                   value: "0"
                 - name: NCCL_NVLS_ENABLE
                   value: "0"
+                # --- Training configuration ---
                 - name: CLEAR_CHECKPOINTS
                   value: "1"
                 - name: GRPO_MODEL
-                  value: "Qwen/Qwen2.5-0.5B-Instruct"
+                  value: "nvidia/Nemotron-Mini-4B-Instruct"
                 - name: GRPO_MAX_STEPS
                   value: "100"
+                - name: GRPO_NUM_NODES
+                  value: "2"
+                # --- Shared storage paths (configurable) ---
+                - name: SHARED_DIR
+                  value: "/shared/nvrx-demo"
                 - name: HF_HOME
                   value: "/shared/nvrx-demo/hf_cache"
                 - name: HF_DATASETS_CACHE
@@ -150,7 +150,7 @@ spec:
           volumes: &common-volumes
             - name: fsx
               persistentVolumeClaim:
-                claimName: fsx-pvc
+                claimName: fsx-pvc    # <-- change to your PVC name
             - name: shm
               emptyDir:
                 medium: Memory
@@ -190,7 +190,7 @@ spec:
                     topologyKey: kubernetes.io/hostname
             containers:
               - name: ray-worker
-                image: public.ecr.aws/v9l4g5s4/nemo-rl-workshop:p5en
+                image: <your-registry>/nemo-rl-workshop:latest  # <-- replace with your image
                 imagePullPolicy: Always
                 securityContext:
                   privileged: true
