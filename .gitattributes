@@ -4,3 +4,9 @@
 # Declare files that will always have CRLF line endings on checkout.
 *.sln text eol=crlf
 *.bat text eol=crlf
+
+# Git LFS tracking rules for large binary files
+*.gif filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.tar.bz2 filter=lfs diff=lfs merge=lfs -text
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
