@@ -198,7 +198,26 @@ python scripts/parse_benchmark.py \
     --patches_per_sample 2048
 ```
 
-## 7. Full Pre-training
+## 7. Optimized Config (B200)
+
+An optimized config is provided for B200 GPUs that enables `torch.compile` and disables activation checkpointing. This trades higher GPU memory usage (~95 GB/GPU vs ~33 GB) for ~23% faster iteration time.
+
+```bash
+mkdir -p logs/vjepa2_benchmark_opt
+sbatch slurm/benchmark_training_b200_optimized.sbatch
+```
+
+| Setting | Baseline | Optimized |
+|---------|----------|-----------|
+| `compile_model` | false | true |
+| `use_activation_checkpointing` | true | false |
+| `num_workers` | 8 | 20 |
+| GPU memory per device | ~33 GB | ~95 GB |
+
+> **Note**: H200 GPUs have 141 GB HBM. Verify memory fits your workload before
+> disabling activation checkpointing on H200 (it works fine on B200 with 178 GB).
+
+## 8. Full Pre-training
 
 For full pre-training (800 epochs):
 
@@ -228,7 +247,7 @@ V-JEPA 2 ViT-g/16:
 - Uses `DistributedDataParallel` with EMA target encoder
 - Activation checkpointing and BF16 mixed precision enabled
 
-## 8. Profiling with nsys
+## 9. Profiling with nsys
 
 Profile the training loop with NVIDIA Nsight Systems to identify GPU kernel bottlenecks, memory allocation patterns, and communication overhead. Only rank 0 is profiled to keep output sizes manageable.
 
