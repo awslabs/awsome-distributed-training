@@ -140,7 +140,39 @@ kubectl apply -f kubernetes/vjepa2-1-benchmark.yaml
 kubectl logs -f pytorchjob/vjepa2-1-benchmark-worker-0
 ```
 
-## 6. Parse Results
+## 6. FSDP Experimental Config (B200)
+
+> **Benchmark finding**: FSDP was found to be **~2x slower** than baseline DDP in benchmarks
+> (iter ~8,200 ms vs ~4,075 ms on video ranks). The gradient sharding communication overhead
+> outweighs the memory savings. `torch.compile` with activation checkpointing enabled was
+> also tested and found to be ~55% slower due to graph breaks from checkpoint segments and
+> dynamic masking. **The baseline DDP config is the recommended configuration for V-JEPA 2.1.**
+
+An FSDP variant is provided for reference that replaces DDP with `FullyShardedDataParallel` (SHARD_GRAD_OP / ZeRO-2) for the encoder and target encoder. This shards gradients and optimizer states across ranks, saving ~15 GB/GPU. Activation checkpointing must remain enabled because video ranks (16-frame clips, bs=24) exceed 178 GB HBM without it.
+
+```bash
+mkdir -p logs/vjepa21_fsdp
+sbatch slurm/benchmark_training_b200_fsdp.sbatch
+```
+
+| Setting | Baseline (DDP) | FSDP |
+|---------|---------------|------|
+| Parallelism | DDP (all components) | FSDP encoder+target, DDP predictor |
+| `compile_model` | false | true |
+| `use_activation_checkpointing` | true | true |
+| `num_workers` | 8 | 20 |
+
+The FSDP script (`scripts/run_train_fsdp.py`) is a self-contained training loop that:
+- Wraps encoder and target_encoder with `FSDP(sharding_strategy=SHARD_GRAD_OP, use_orig_params=True)`
+- Keeps predictor with DDP (`find_unused_parameters=True`) since it is small (~55M params)
+- EMA updates operate on FSDP parameters after all-gather (SHARD_GRAD_OP keeps full params materialized)
+- Disables GradScaler for BF16
+
+> **Note**: Checkpoint saving in the FSDP script is minimal (benchmark metadata only).
+> For production training, implement FSDP-aware checkpointing with `StateDictType.FULL_STATE_DICT`
+> or `SHARDED_STATE_DICT`.
+
+## 7. Parse Results
 
 ```bash
 python scripts/parse_benchmark.py \
@@ -180,7 +212,7 @@ V-JEPA 2.1 ViT-g/16:
 - Uses `DistributedDataParallel` with EMA target encoder
 - Activation checkpointing and BF16 mixed precision enabled
 
-## 7. Profiling with nsys
+## 8. Profiling with nsys
 
 Profile the training loop with NVIDIA Nsight Systems to identify GPU kernel bottlenecks, memory allocation patterns, and communication overhead. Only rank 0 is profiled to keep output sizes manageable.
 
