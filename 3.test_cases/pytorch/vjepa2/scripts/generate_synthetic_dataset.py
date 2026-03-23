@@ -11,11 +11,16 @@ with V-JEPA 2's VideoDataset format.
 Usage:
     python generate_synthetic_dataset.py \
         --output_dir /fsx/<your_username>/vjepa2/datasets/synthetic \
-        --num_videos 5000 \
+        --num_videos 50000 \
         --num_frames 32 \
         --width 256 \
         --height 256 \
         --fps 4
+
+Note: We recommend generating at least 50,000 videos for reliable benchmark
+results. With fewer videos (e.g. 5,000), the data loader must frequently
+re-initialize workers between epochs, which inflates iteration times and
+masks the true GPU throughput.
 """
 
 import argparse
@@ -24,9 +29,30 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+
 
 def generate_video(output_path, num_frames=32, width=256, height=256, fps=4, seed=0):
-    """Generate a synthetic video with random content using ffmpeg."""
+    """Generate a synthetic video with random content.
+
+    Tries OpenCV (cv2) first for broad compatibility, then falls back to
+    ffmpeg if cv2 is not installed.
+    """
+    try:
+        import cv2
+
+        rng = np.random.RandomState(seed)
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        for _ in range(num_frames):
+            frame = rng.randint(0, 256, (height, width, 3), dtype=np.uint8)
+            out.write(frame)
+        out.release()
+        return True
+    except ImportError:
+        pass
+
+    # Fallback: use ffmpeg
     duration = num_frames / fps
     cmd = [
         "ffmpeg",
@@ -62,8 +88,8 @@ def main():
     parser.add_argument(
         "--num_videos",
         type=int,
-        default=5000,
-        help="Number of synthetic videos to generate",
+        default=50000,
+        help="Number of synthetic videos to generate (50k recommended for benchmarks)",
     )
     parser.add_argument("--num_frames", type=int, default=32)
     parser.add_argument("--width", type=int, default=256)

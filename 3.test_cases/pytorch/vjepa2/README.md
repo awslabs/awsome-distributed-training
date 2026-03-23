@@ -82,8 +82,12 @@ srun -N1 --ntasks=1 --cpus-per-task=48 -p p5en \
     --container-mounts /fsx:/fsx \
     python /vjepa2/scripts/generate_synthetic_dataset.py \
         --output_dir /fsx/<your_username>/vjepa2/datasets/synthetic \
-        --num_videos 5000
+        --num_videos 50000
 ```
+
+> **Note**: Use at least 50,000 videos for reliable benchmark numbers. Smaller
+> datasets cause frequent data loader re-initialization between epochs, which
+> inflates iteration times and masks true GPU throughput.
 
 Then update your config to point to the generated CSV:
 ```yaml

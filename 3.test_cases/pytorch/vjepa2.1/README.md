@@ -70,7 +70,7 @@ srun -N1 --ntasks=1 --cpus-per-task=48 -p p5en \
     --container-mounts /fsx:/fsx \
     python /vjepa2/scripts/generate_synthetic_dataset.py \
         --output_dir /fsx/<your_username>/vjepa2.1/datasets/synthetic \
-        --num_videos 5000
+        --num_videos 50000
 
 # Synthetic images
 srun -N1 --ntasks=1 --cpus-per-task=48 -p p5en \
@@ -78,8 +78,13 @@ srun -N1 --ntasks=1 --cpus-per-task=48 -p p5en \
     --container-mounts /fsx:/fsx \
     python /fsx/<your_username>/vjepa2.1/scripts/generate_synthetic_images.py \
         --output_dir /fsx/<your_username>/vjepa2.1/datasets/synthetic_images \
-        --num_images 5000
+        --num_images 50000
 ```
+
+> **Note**: Use at least 50,000 videos and 50,000 images for reliable benchmark
+> numbers. With V-JEPA 2.1's rank_ratio=0.5 split, each rank sees only half
+> the dataset; smaller datasets (e.g. 5,000) cause frequent data loader
+> re-initialization that can inflate iteration times by up to 4x.
 
 ## 3. Build Container
 

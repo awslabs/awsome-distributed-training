@@ -13,9 +13,14 @@ images and a CSV file compatible with that format.
 Usage:
     python generate_synthetic_images.py \
         --output_dir /fsx/<your_username>/vjepa2.1/datasets/synthetic_images \
-        --num_images 5000 \
+        --num_images 50000 \
         --width 256 \
         --height 256
+
+Note: We recommend generating at least 50,000 images for reliable benchmark
+results. With fewer images (e.g. 5,000), the data loader must frequently
+re-initialize workers between epochs, which inflates iteration times and
+masks the true GPU throughput.
 """
 
 import argparse
@@ -64,8 +69,8 @@ def main():
     parser.add_argument(
         "--num_images",
         type=int,
-        default=5000,
-        help="Number of synthetic images to generate",
+        default=50000,
+        help="Number of synthetic images to generate (50k recommended for benchmarks)",
     )
     parser.add_argument("--width", type=int, default=256)
     parser.add_argument("--height", type=int, default=256)

@@ -9,6 +9,12 @@
 #   - folder: output directory for logs and checkpoints
 #   - datasets: paths to your training CSVs (synthetic or real)
 #   - img_data.datasets: path to your image CSV (synthetic or ImageNet)
+#
+# Important: Generate at least 50,000 synthetic videos and 50,000 images for
+# accurate benchmarks. Smaller datasets (e.g. 5,000) cause frequent data
+# loader re-initialization which inflates iteration times by up to 4x and
+# masks true GPU throughput. This is especially important for V-JEPA 2.1
+# where the rank_ratio=0.5 split means each rank processes only half the data.
 
 app: vjepa_2_1
 nodes: 8

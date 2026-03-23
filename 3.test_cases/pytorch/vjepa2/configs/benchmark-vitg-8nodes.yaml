@@ -5,6 +5,10 @@
 # Before running, update the following paths:
 #   - folder: output directory for logs and checkpoints
 #   - datasets: path to your training CSV (synthetic or SSv2)
+#
+# Important: Generate at least 50,000 synthetic videos for accurate benchmarks.
+# Smaller datasets (e.g. 5,000) cause frequent data loader re-initialization
+# which inflates iteration times and masks true GPU throughput.
 
 app: vjepa
 nodes: 8
