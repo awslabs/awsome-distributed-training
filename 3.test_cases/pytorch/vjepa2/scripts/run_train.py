@@ -36,6 +36,24 @@ if __name__ == "__main__":
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(params)
 
+    # -- Optimization: disable GradScaler for BF16 training.
+    # BF16 has the same dynamic range as FP32, so loss scaling is unnecessary.
+    # V-JEPA 2 unconditionally creates a GradScaler; monkey-patching it to
+    # a no-op removes the scale/unscale/step/update overhead per iteration.
+    # We subclass instead of using a lambda so that Apex's GradScaler (which
+    # inherits from torch.cuda.amp.GradScaler) still works.
+    if params.get("meta", {}).get("dtype") == "bfloat16":
+        import torch.cuda.amp
+
+        _OrigGradScaler = torch.cuda.amp.GradScaler
+
+        class _DisabledGradScaler(_OrigGradScaler):
+            def __init__(self, *args, **kwargs):
+                kwargs["enabled"] = False
+                super().__init__(*args, **kwargs)
+
+        torch.cuda.amp.GradScaler = _DisabledGradScaler
+
     # Import train module - this triggers CUDA_VISIBLE_DEVICES setup from SLURM_LOCALID
     from app.vjepa.train import main as train_main
 

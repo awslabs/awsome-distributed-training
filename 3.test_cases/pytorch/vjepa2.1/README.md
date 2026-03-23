@@ -166,6 +166,10 @@ With `img_data.rank_ratio: 0.5` on 64 GPUs:
 
 The code automatically adjusts the per-GPU video batch size to maintain the configured global batch size across the reduced number of video ranks. Each rank creates a single data loader for its assigned modality.
 
+### GradScaler and BF16
+
+The upstream V-JEPA 2/2.1 code unconditionally creates a `torch.cuda.amp.GradScaler()` for mixed-precision training. GradScaler is designed for FP16, where the narrow dynamic range can cause gradient underflow. BF16 has the same dynamic range as FP32, making the scale/unscale/step/update cycle pure overhead. The `run_train.py` launcher monkey-patches `GradScaler` to a no-op (`enabled=False`) when BF16 is configured, removing this unnecessary work.
+
 ### Model architecture
 
 V-JEPA 2.1 ViT-g/16:

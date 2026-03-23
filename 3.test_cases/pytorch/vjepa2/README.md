@@ -237,6 +237,10 @@ V-JEPA 2 uses **`srun` directly** (not `srun + torchrun`). Each `srun` task:
 
 We use a thin launcher (`scripts/run_train.py`) that loads the YAML config and calls the V-JEPA 2 training entry point directly. This ensures each `srun` task correctly inherits SLURM environment variables for distributed initialization. The `--ntasks-per-node=8` in the sbatch header ensures 8 processes per node (one per GPU).
 
+### GradScaler and BF16
+
+The upstream V-JEPA 2 code unconditionally creates a `torch.cuda.amp.GradScaler()` for mixed-precision training. GradScaler is designed for FP16, where the narrow dynamic range can cause gradient underflow. BF16 has the same dynamic range as FP32, making the scale/unscale/step/update cycle pure overhead. The `run_train.py` launcher monkey-patches `GradScaler` to a no-op (`enabled=False`) when BF16 is configured, removing this unnecessary work.
+
 ### Model architecture
 
 V-JEPA 2 ViT-g/16:
