@@ -176,6 +176,32 @@ V-JEPA 2.1 ViT-g/16:
 - Uses `DistributedDataParallel` with EMA target encoder
 - Activation checkpointing and BF16 mixed precision enabled
 
+## 7. Profiling with nsys
+
+Profile the training loop with NVIDIA Nsight Systems to identify GPU kernel bottlenecks, memory allocation patterns, and communication overhead. Only rank 0 is profiled to keep output sizes manageable.
+
+```bash
+mkdir -p logs/vjepa21_nsys
+
+# Baseline profile
+sbatch slurm/nsys_profile_b200.sbatch
+
+# Profile a specific config (e.g. after FSDP optimization)
+NSYS_PROFILE_DIR=phase4_fsdp \
+CONFIG=/fsx/${USER}/vjepa2.1/configs/benchmark-vitg-8nodes-fsdp.yaml \
+    sbatch slurm/nsys_profile_b200.sbatch
+```
+
+Profiles are saved to `/fsx/${USER}/vjepa2.1/nsys/<profile_dir>/rank0.nsys-rep`. Open them with `nsys-ui` or download locally for analysis. Each optimization phase should use a different `NSYS_PROFILE_DIR` to keep profiles organized:
+
+```
+nsys/
+├── baseline/          # Un-optimized baseline
+├── phase2_noscaler/   # GradScaler disabled for BF16
+├── phase4_fsdp/       # FSDP sharded training
+└── ...
+```
+
 ## Benchmark Results
 
 _Benchmark results will be published separately._
