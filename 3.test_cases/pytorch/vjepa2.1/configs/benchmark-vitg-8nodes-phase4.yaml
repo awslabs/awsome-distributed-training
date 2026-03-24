@@ -2,8 +2,12 @@
 # Based on benchmark-vitg-8nodes-optimized.yaml with increased batch sizes.
 #
 # Changes from Phase 2/3 config:
-#   - batch_size: 36  (video, up from 24 — 50% increase)
-#   - img batch_size: 108  (image, up from 72 — 50% increase)
+#   - batch_size: 18  (video, effective 36/rank — 50% increase from Phase 1-3)
+#   - img batch_size: 72  (image, kept same — already efficient)
+#
+# IMPORTANT: V-JEPA 2.1 computes effective per-rank batch as:
+#   batch_size * world_size / num_video_ranks
+# With rank_ratio=0.5 and 64 GPUs: batch_size * 64 / 32 = batch_size * 2
 #
 # Memory impact: ~130-150 GB/GPU estimated with compile + no AC + larger batch.
 # B200 GPUs have 178 GB HBM so this should fit, but monitor closely.
@@ -23,7 +27,7 @@ data:
     - /fsx/<your_username>/vjepa2.1/datasets/synthetic_50k/synthetic_train_paths.csv
   datasets_weights:
     - 1.0
-  batch_size: 36
+  batch_size: 18
   crop_size: 256
   patch_size: 16
   dataset_fpcs:
@@ -35,7 +39,7 @@ data:
   pin_mem: true
 
 img_data:
-  batch_size: 108
+  batch_size: 72
   crop_size: 256
   dataset_fpcs:
     - 1

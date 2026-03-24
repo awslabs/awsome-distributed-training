@@ -27,8 +27,8 @@
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
 #SBATCH --job-name=vjepa21-optim
-#SBATCH --output=logs/vjepa21_optim/%A.out
-#SBATCH --error=logs/vjepa21_optim/%A.err
+#SBATCH --output=/fsx/ubuntu/logs/vjepa21_optim/%A.out
+#SBATCH --error=/fsx/ubuntu/logs/vjepa21_optim/%A.err
 #SBATCH --exclusive
 #SBATCH --partition=b200
 #SBATCH --account=root
@@ -174,7 +174,7 @@ echo "  Phase 1: AC off + workers 16 + prefetch 4 + SDPA check"
 [[ "$PHASE" == "5" ]]      && echo "  Phase 5: + NCCL_NVLS=1, GRAPH_REG=1, grad_bucket_view"
 echo "======================================="
 
-mkdir -p logs/vjepa21_optim
+mkdir -p /fsx/ubuntu/logs/vjepa21_optim
 mkdir -p "$(dirname "${NSYS_OUTPUT}")"
 
 # Delete stale checkpoint to prevent loading previous state

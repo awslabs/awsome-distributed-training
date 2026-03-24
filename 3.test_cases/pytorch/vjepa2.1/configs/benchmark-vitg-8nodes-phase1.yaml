@@ -3,10 +3,13 @@
 #
 # Changes from baseline:
 #   - use_activation_checkpointing: false  (trades memory for speed)
+#   - batch_size: 12  (effective 24/rank with rank_ratio=0.5; reduced from
+#     baseline 24 (eff 48) to fit in 178 GB without AC — uses ~127 GB/GPU)
 #   - num_workers: 16         (B200 has 192 CPUs = 24/GPU; 16 leaves headroom)
 #
-# This config isolates the impact of disabling activation checkpointing
-# and increasing data loader parallelism, before adding torch.compile.
+# IMPORTANT: V-JEPA 2.1 computes effective per-rank batch as:
+#   batch_size * world_size / num_video_ranks
+# With rank_ratio=0.5 and 64 GPUs: batch_size * 64 / 32 = batch_size * 2
 #
 # Before running, update paths marked with <your_username>.
 
@@ -23,7 +26,7 @@ data:
     - /fsx/<your_username>/vjepa2.1/datasets/synthetic_50k/synthetic_train_paths.csv
   datasets_weights:
     - 1.0
-  batch_size: 24
+  batch_size: 12
   crop_size: 256
   patch_size: 16
   dataset_fpcs:
