@@ -53,7 +53,7 @@ jobs:
           echo "${{ secrets.SLURM_SSH_KEY }}" > ~/.ssh/slurm_key
           chmod 600 ~/.ssh/slurm_key
           for i in {1..5}; do
-            if ssh-keyscan -H ${{ env.SLURM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then
+            if ssh-keyscan -H "${{ env.SLURM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null; then
               echo "SSH keyscan successful"
               break
             fi
@@ -66,9 +66,9 @@ jobs:
         run: |
           BUILD_ID="${{ github.run_id }}"
           REMOTE_CODE_PATH="${{ env.BASE_PATH }}/deepspeed-tests/code-${BUILD_ID}"
-          echo "remote_code_path=$REMOTE_CODE_PATH" >> $GITHUB_OUTPUT
-          echo "REMOTE_CODE_PATH=$REMOTE_CODE_PATH" >> $GITHUB_ENV
-          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+          echo "remote_code_path=$REMOTE_CODE_PATH" >> "$GITHUB_OUTPUT"
+          echo "REMOTE_CODE_PATH=$REMOTE_CODE_PATH" >> "$GITHUB_ENV"
+          echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
 
       - name: Transfer Code to Cluster
         run: |
@@ -90,8 +90,8 @@ jobs:
         run: |
           QLORA_SQSH="/fsx/apps/qwen3-qlora-${{ env.BUILD_ID }}.sqsh"
           GPT_SQSH="/fsx/apps/deepspeed-${{ env.BUILD_ID }}.sqsh"
-          echo "qlora_sqsh=$QLORA_SQSH" >> $GITHUB_OUTPUT
-          echo "gpt_sqsh=$GPT_SQSH" >> $GITHUB_OUTPUT
+          echo "qlora_sqsh=$QLORA_SQSH" >> "$GITHUB_OUTPUT"
+          echo "gpt_sqsh=$GPT_SQSH" >> "$GITHUB_OUTPUT"
 
           # Build QLoRA container first
           ssh -i ~/.ssh/slurm_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
@@ -174,7 +174,7 @@ jobs:
           echo "${{ secrets.SLURM_SSH_KEY }}" > ~/.ssh/slurm_key
           chmod 600 ~/.ssh/slurm_key
           for i in {1..5}; do
-            if ssh-keyscan -H ${{ env.SLURM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then
+            if ssh-keyscan -H "${{ env.SLURM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null; then
               echo "SSH keyscan successful"
               break
             fi
@@ -189,10 +189,10 @@ jobs:
           REMOTE_CODE_PATH="${{ needs.build-containers.outputs.remote_code_path }}"
           LOG_DIR="${{ env.HOME_PATH }}/ds-qlora-logs-${BUILD_ID}-${{ matrix.zero_config }}"
           SQSH_PATH="${{ needs.build-containers.outputs.qlora_sqsh }}"
-          echo "REMOTE_CODE_PATH=$REMOTE_CODE_PATH" >> $GITHUB_ENV
-          echo "LOG_DIR=$LOG_DIR" >> $GITHUB_ENV
-          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
-          echo "SQSH_PATH=$SQSH_PATH" >> $GITHUB_ENV
+          echo "REMOTE_CODE_PATH=$REMOTE_CODE_PATH" >> "$GITHUB_ENV"
+          echo "LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
+          echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
+          echo "SQSH_PATH=$SQSH_PATH" >> "$GITHUB_ENV"
 
       - name: Create Log Directory
         run: |
@@ -277,8 +277,8 @@ jobs:
           JOB_ID=$(ssh -i ~/.ssh/slurm_key -o StrictHostKeyChecking=no \
             ${{ env.SLURM_USER }}@${{ env.SLURM_HOST }} \
             "cat ${{ env.LOG_DIR }}/job_id.txt")
-          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-          echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
           echo "Submitted Slurm job: $JOB_ID"
 
       - name: Monitor Slurm Job
@@ -388,7 +388,7 @@ jobs:
           echo "${{ secrets.SLURM_SSH_KEY }}" > ~/.ssh/slurm_key
           chmod 600 ~/.ssh/slurm_key
           for i in {1..5}; do
-            if ssh-keyscan -H ${{ env.SLURM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then
+            if ssh-keyscan -H "${{ env.SLURM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null; then
               echo "SSH keyscan successful"
               break
             fi
@@ -403,10 +403,10 @@ jobs:
           REMOTE_CODE_PATH="${{ needs.build-containers.outputs.remote_code_path }}"
           LOG_DIR="${{ env.HOME_PATH }}/ds-gpt103b-logs-${BUILD_ID}"
           SQSH_PATH="${{ needs.build-containers.outputs.gpt_sqsh }}"
-          echo "REMOTE_CODE_PATH=$REMOTE_CODE_PATH" >> $GITHUB_ENV
-          echo "LOG_DIR=$LOG_DIR" >> $GITHUB_ENV
-          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
-          echo "SQSH_PATH=$SQSH_PATH" >> $GITHUB_ENV
+          echo "REMOTE_CODE_PATH=$REMOTE_CODE_PATH" >> "$GITHUB_ENV"
+          echo "LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
+          echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
+          echo "SQSH_PATH=$SQSH_PATH" >> "$GITHUB_ENV"
 
       - name: Create Log Directory
         run: |
@@ -507,8 +507,8 @@ jobs:
           JOB_ID=$(ssh -i ~/.ssh/slurm_key -o StrictHostKeyChecking=no \
             ${{ env.SLURM_USER }}@${{ env.SLURM_HOST }} \
             "cat ${{ env.LOG_DIR }}/job_id.txt")
-          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-          echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
           echo "Submitted Slurm job: $JOB_ID"
 
       - name: Monitor Slurm Job
@@ -614,7 +614,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SLURM_SSH_KEY }}" > ~/.ssh/slurm_key
           chmod 600 ~/.ssh/slurm_key
-          ssh-keyscan -H ${{ env.SLURM_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H "${{ env.SLURM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Cleanup Shared Resources
         run: |
