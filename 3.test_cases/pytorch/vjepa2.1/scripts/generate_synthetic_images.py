@@ -12,10 +12,9 @@ images and a CSV file compatible with that format.
 
 Usage:
     python generate_synthetic_images.py \
-        --output_dir /fsx/<your_username>/vjepa2.1/datasets/synthetic_images \
+        --output_dir /fsx/<your_username>/vjepa2.1/datasets/synthetic_images_50k \
         --num_images 50000 \
-        --width 256 \
-        --height 256
+        --workers 64
 
 Note: We recommend generating at least 50,000 images for reliable benchmark
 results. With fewer images (e.g. 5,000), the data loader must frequently
@@ -25,20 +24,25 @@ masks the true GPU throughput.
 
 import argparse
 import os
+import subprocess
 import sys
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 
 
-def generate_image(output_path, width=256, height=256, seed=0):
-    """Generate a synthetic JPEG image with random content."""
+def generate_image(args_tuple):
+    """Generate a single synthetic JPEG image. Accepts a tuple for pool.map()."""
+    output_path, width, height, seed = args_tuple
+    if os.path.exists(output_path):
+        return True
+
     try:
         from PIL import Image
     except ImportError:
-        # Fallback: use raw numpy + simple PPM -> JPEG via subprocess
-        import subprocess
-
+        # Fallback: use raw numpy + PPM -> JPEG via ffmpeg
         rng = np.random.RandomState(seed)
         pixels = rng.randint(0, 256, (height, width, 3), dtype=np.uint8)
         ppm_path = output_path.replace(".jpg", ".ppm")
@@ -80,41 +84,65 @@ def main():
         default=1000,
         help="Number of label classes (1000 matches ImageNet)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel worker processes (set to CPU count for max speed)",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     image_dir = output_dir / "images"
     image_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = output_dir / "synthetic_image_paths.csv"
+    # Build work items
+    work = []
+    for i in range(args.num_images):
+        image_path = str(image_dir / f"img_{i:06d}.jpg")
+        work.append((image_path, args.width, args.height, i))
+
+    print(f"Generating {args.num_images} images with {args.workers} workers...")
+    t0 = time.time()
     success = 0
     fail = 0
 
+    if args.workers <= 1:
+        for i, item in enumerate(work):
+            ok = generate_image(item)
+            success += ok
+            fail += not ok
+            if (i + 1) % 1000 == 0:
+                print(f"  {i + 1}/{args.num_images} images...")
+    else:
+        with ProcessPoolExecutor(max_workers=args.workers) as executor:
+            futures = {
+                executor.submit(generate_image, item): i for i, item in enumerate(work)
+            }
+            for future in as_completed(futures):
+                ok = future.result()
+                success += ok
+                fail += not ok
+                done = success + fail
+                if done % 5000 == 0:
+                    elapsed = time.time() - t0
+                    rate = done / elapsed if elapsed > 0 else 0
+                    print(f"  {done}/{args.num_images} images ({rate:.0f}/s)...")
+
+    elapsed = time.time() - t0
+    print(
+        f"\nGenerated {success} images in {elapsed:.1f}s ({success / elapsed:.0f}/s), {fail} failed"
+    )
+
+    # Write CSV (sequential, fast)
+    csv_path = output_dir / "synthetic_image_paths.csv"
     with open(csv_path, "w") as csv_file:
         for i in range(args.num_images):
             image_path = image_dir / f"img_{i:06d}.jpg"
-            label = i % args.num_classes
-
             if image_path.exists():
+                label = i % args.num_classes
                 csv_file.write(f"{image_path} {label}\n")
-                success += 1
-            else:
-                ok = generate_image(
-                    str(image_path),
-                    width=args.width,
-                    height=args.height,
-                    seed=i,
-                )
-                if ok:
-                    csv_file.write(f"{image_path} {label}\n")
-                    success += 1
-                else:
-                    fail += 1
 
-            if (i + 1) % 1000 == 0:
-                print(f"Generated {i + 1}/{args.num_images} images...")
-
-    print(f"\nDone: {success} images generated, {fail} failed")
     print(f"CSV: {csv_path}")
     print(f"Images: {image_dir}")
 

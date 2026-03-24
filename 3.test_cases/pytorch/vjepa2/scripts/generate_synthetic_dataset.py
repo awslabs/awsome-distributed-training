@@ -10,12 +10,9 @@ with V-JEPA 2's VideoDataset format.
 
 Usage:
     python generate_synthetic_dataset.py \
-        --output_dir /fsx/<your_username>/vjepa2/datasets/synthetic \
+        --output_dir /fsx/<your_username>/vjepa2/datasets/synthetic_50k \
         --num_videos 50000 \
-        --num_frames 32 \
-        --width 256 \
-        --height 256 \
-        --fps 4
+        --workers 64
 
 Note: We recommend generating at least 50,000 videos for reliable benchmark
 results. With fewer videos (e.g. 5,000), the data loader must frequently
@@ -27,17 +24,19 @@ import argparse
 import os
 import subprocess
 import sys
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 
 
-def generate_video(output_path, num_frames=32, width=256, height=256, fps=4, seed=0):
-    """Generate a synthetic video with random content.
+def generate_video(args_tuple):
+    """Generate a single synthetic video. Accepts a tuple for pool.map()."""
+    output_path, num_frames, width, height, fps, seed = args_tuple
+    if os.path.exists(output_path):
+        return True
 
-    Tries OpenCV (cv2) first for broad compatibility, then falls back to
-    ffmpeg if cv2 is not installed.
-    """
     try:
         import cv2
 
@@ -101,43 +100,65 @@ def main():
         default=174,
         help="Number of label classes (174 matches SSv2)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel worker processes (set to CPU count for max speed)",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     video_dir = output_dir / "videos"
     video_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = output_dir / "synthetic_train_paths.csv"
+    # Build work items
+    work = []
+    for i in range(args.num_videos):
+        video_path = str(video_dir / f"video_{i:06d}.mp4")
+        work.append((video_path, args.num_frames, args.width, args.height, args.fps, i))
+
+    print(f"Generating {args.num_videos} videos with {args.workers} workers...")
+    t0 = time.time()
     success = 0
     fail = 0
 
+    if args.workers <= 1:
+        for i, item in enumerate(work):
+            ok = generate_video(item)
+            success += ok
+            fail += not ok
+            if (i + 1) % 500 == 0:
+                print(f"  {i + 1}/{args.num_videos} videos...")
+    else:
+        with ProcessPoolExecutor(max_workers=args.workers) as executor:
+            futures = {
+                executor.submit(generate_video, item): i for i, item in enumerate(work)
+            }
+            for future in as_completed(futures):
+                ok = future.result()
+                success += ok
+                fail += not ok
+                done = success + fail
+                if done % 2000 == 0:
+                    elapsed = time.time() - t0
+                    rate = done / elapsed if elapsed > 0 else 0
+                    print(f"  {done}/{args.num_videos} videos ({rate:.0f}/s)...")
+
+    elapsed = time.time() - t0
+    print(
+        f"\nGenerated {success} videos in {elapsed:.1f}s ({success / elapsed:.0f}/s), {fail} failed"
+    )
+
+    # Write CSV (sequential, fast)
+    csv_path = output_dir / "synthetic_train_paths.csv"
     with open(csv_path, "w") as csv_file:
         for i in range(args.num_videos):
             video_path = video_dir / f"video_{i:06d}.mp4"
-            label = i % args.num_classes
-
             if video_path.exists():
+                label = i % args.num_classes
                 csv_file.write(f"{video_path} {label}\n")
-                success += 1
-            else:
-                ok = generate_video(
-                    str(video_path),
-                    num_frames=args.num_frames,
-                    width=args.width,
-                    height=args.height,
-                    fps=args.fps,
-                    seed=i,
-                )
-                if ok:
-                    csv_file.write(f"{video_path} {label}\n")
-                    success += 1
-                else:
-                    fail += 1
 
-            if (i + 1) % 500 == 0:
-                print(f"Generated {i + 1}/{args.num_videos} videos...")
-
-    print(f"\nDone: {success} videos generated, {fail} failed")
     print(f"CSV: {csv_path}")
     print(f"Videos: {video_dir}")
 
