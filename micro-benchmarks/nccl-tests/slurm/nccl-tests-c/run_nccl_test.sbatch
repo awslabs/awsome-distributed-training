@@ -51,6 +51,6 @@ echo "Nodes: ${SLURM_JOB_NUM_NODES}, Tasks: ${SLURM_NTASKS}, GPUs/node: ${SLURM_
 
 srun \
     --mpi=pmix \
-    --gpus-per-node=${SLURM_GPUS_PER_NODE} \
-    --ntasks-per-node=${SLURM_NTASKS_PER_NODE} \
+    --gpus-per-node="${SLURM_GPUS_PER_NODE}" \
+    --ntasks-per-node="${SLURM_NTASKS_PER_NODE}" \
     "${WORKDIR}/nccl_sendrecv_test"
