@@ -3,14 +3,27 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
+# nsys profiling script for V-JEPA 2 on ParallelCluster p5en (H200 GPUs).
+#
+# Profiles rank 0 only using nsys_wrapper.sh.  All other ranks run
+# un-instrumented to avoid large output files and profiling overhead.
+#
+# Environment variables (set before sbatch or use --export):
+#   NSYS_PROFILE_DIR - Subfolder name under nsys/ for this run.
+#                      Default: "baseline"
+#
+# Usage:
+#   sbatch /fsx/${USER}/vjepa2/nsys_profile.sbatch
+
 #SBATCH --nodes=8
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
-#SBATCH --job-name=vjepa2-benchmark
-#SBATCH --output=logs/vjepa2_benchmark/%A.out
-#SBATCH --error=logs/vjepa2_benchmark/%A.err
+#SBATCH --job-name=vjepa2-nsys
+#SBATCH --output=logs/vjepa2_nsys/%A.out
+#SBATCH --error=logs/vjepa2_nsys/%A.err
 #SBATCH --exclusive
 #SBATCH --partition=p5en
+#SBATCH --time=01:00:00
 
 set -ex
 
@@ -18,8 +31,14 @@ set -ex
 ###### User Variables #####
 ###########################
 
-# Path to your V-JEPA 2 files on shared storage
 VJEPA2_DIR=/fsx/${USER}/vjepa2
+
+# Profiling output directory
+NSYS_PROFILE_DIR="${NSYS_PROFILE_DIR:-baseline}"
+export NSYS_OUTPUT=${VJEPA2_DIR}/nsys/${NSYS_PROFILE_DIR}/rank0
+
+# nsys binary location on this container
+export NSYS_BIN=/usr/local/bin/nsys
 
 ###########################
 ## Container Variables ####
@@ -35,7 +54,6 @@ export FSX_MOUNT=/fsx:/fsx
 export NCCL_DEBUG=INFO
 export FI_PROVIDER=efa
 export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
-# NCCL lib path (ParallelCluster p5en); adjust if using a different setup
 export LD_PRELOAD=/lib/x86_64-linux-gnu/libnccl.so.2
 export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 
@@ -53,12 +71,6 @@ declare -a ARGS=(
 ## Training Args ##########
 ###########################
 
-# V-JEPA 2 uses srun directly (not torchrun).
-# scripts/run_train.py calls app.vjepa.train.main() which reads:
-#   SLURM_LOCALID  -> sets CUDA_VISIBLE_DEVICES (1 GPU per process)
-#   SLURM_NTASKS   -> world size for torch.distributed
-#   SLURM_PROCID   -> global rank for torch.distributed
-
 declare -a TRAINING_ARGS=(
     --fname ${VJEPA2_DIR}/configs/benchmark-vitg-8nodes.yaml
 )
@@ -73,4 +85,15 @@ if [ -d "/opt/sagemaker_cluster" ]; then
     AUTO_RESUME="--auto-resume=1"
 fi
 
-srun ${AUTO_RESUME} -l "${ARGS[@]}" python scripts/run_train.py "${TRAINING_ARGS[@]}"
+echo "=== nsys profiling ==="
+echo "Profile dir: ${NSYS_PROFILE_DIR}"
+echo "Output:      ${NSYS_OUTPUT}.nsys-rep"
+echo "Config:      ${VJEPA2_DIR}/configs/benchmark-vitg-8nodes.yaml"
+echo "======================"
+
+mkdir -p logs/vjepa2_nsys
+mkdir -p "$(dirname "${NSYS_OUTPUT}")"
+
+/opt/slurm/bin/srun ${AUTO_RESUME} -l "${ARGS[@]}" \
+    bash ${VJEPA2_DIR}/scripts/nsys_wrapper.sh \
+    python ${VJEPA2_DIR}/scripts/run_train.py "${TRAINING_ARGS[@]}"

@@ -2,9 +2,12 @@
 # Based on benchmark-vitg-8nodes.yaml with performance tuning for B200 GPUs.
 #
 # Changes from baseline:
-#   - compile_model: true     (torch.compile for fused kernels, ~20% GPU speedup)
+#   - compile_model: true     (torch.compile for fused kernels)
 #   - use_activation_checkpointing: false  (trades memory for speed)
 #   - num_workers: 20         (higher prefetch to hide data loading latency)
+#
+# Note: compile_model MUST be under the `model:` section (not `meta:`)
+# because the upstream train.py reads it from cfgs_model.
 #
 # Memory impact: ~95 GB/GPU vs ~33 GB/GPU with activation checkpointing.
 # B200 GPUs have 178 GB HBM so this is well within limits.
@@ -92,9 +95,9 @@ meta:
   save_every_freq: -1
   seed: 239
   use_sdpa: true
-  compile_model: true
 
 model:
+  compile_model: true
   model_name: vit_giant_xformers
   pred_depth: 12
   pred_embed_dim: 384
