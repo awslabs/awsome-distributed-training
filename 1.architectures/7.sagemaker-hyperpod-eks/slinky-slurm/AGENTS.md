@@ -26,7 +26,9 @@ Key automation scripts:
   uses `helm upgrade --install` for idempotent operations
 - **`destroy.sh`** — Reverse teardown of all deployed resources (including LB Controller
   Pod Identity + IAM, cert-manager, and FSx PVC); warns when `EKS_CLUSTER_NAME` is
-  unset and Pod Identity / addon cleanup is skipped
+  unset and Pod Identity / addon cleanup is skipped; warns when `AWS_ACCOUNT_ID` is
+  unavailable and IAM cleanup is skipped; preserves ECR repository and S3 build context
+  bucket with manual cleanup commands printed at end of run
 - **`lib/deploy_helpers.sh`** — Extracted testable functions sourced by `deploy.sh` and `setup.sh`
 - **`params.json`** — CloudFormation parameters (40 params, g5 defaults)
 - **`custom.tfvars`** — Terraform variables (g5 defaults)
