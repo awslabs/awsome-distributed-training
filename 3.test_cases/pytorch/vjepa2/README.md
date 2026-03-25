@@ -186,7 +186,7 @@ kubectl logs -f pytorchjob/vjepa2-benchmark-worker-0
 
 ## 6. Parse Results
 
-After the benchmark completes, parse the logs to compute throughput and MFU:
+After the benchmark completes, parse the logs to compute throughput:
 
 ```bash
 python scripts/parse_benchmark.py \
@@ -194,8 +194,7 @@ python scripts/parse_benchmark.py \
     --warmup_iters 20 \
     --batch_size_per_gpu 24 \
     --num_gpus 64 \
-    --model_params 1.1e9 \
-    --patches_per_sample 2048
+    --gpu_type h200
 ```
 
 ## 7. Optimized Config (B200)
@@ -279,7 +278,7 @@ nsys/
 
 ## Benchmark Results
 
-_Benchmark results will be published separately._
+_Benchmark results are maintained separately in `benchmarks/vjepa2-benchmark-results.md` (gitignored)._
 
 ## References
 

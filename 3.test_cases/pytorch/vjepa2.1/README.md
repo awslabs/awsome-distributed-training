@@ -180,8 +180,7 @@ python scripts/parse_benchmark.py \
     --warmup_iters 20 \
     --batch_size_per_gpu 24 \
     --num_gpus 64 \
-    --model_params 1.1e9 \
-    --patches_per_sample 2048
+    --gpu_type h200
 ```
 
 ## Architecture Notes
@@ -240,7 +239,7 @@ nsys/
 
 ## Benchmark Results
 
-_Benchmark results will be published separately._
+_Benchmark results are maintained separately in `../vjepa2/benchmarks/vjepa2-benchmark-results.md` (gitignored)._
 
 ## References
 
