@@ -341,8 +341,10 @@ else
         # Remove the ECR repository from Terraform state so that
         # 'terraform destroy' does not attempt to delete it (avoids failure
         # when images exist). The repo is preserved for the customer.
-        terraform -chdir="${cb_dir}" state rm aws_ecr_repository.slurmd 2>/dev/null || true
-        terraform -chdir="${cb_dir}" state rm aws_ecr_lifecycle_policy.slurmd 2>/dev/null || true
+        # When create_ecr_repository=false these resources are not in state,
+        # so the state rm commands fail silently via || true.
+        terraform -chdir="${cb_dir}" state rm 'aws_ecr_repository.slurmd[0]' 2>/dev/null || true
+        terraform -chdir="${cb_dir}" state rm 'aws_ecr_lifecycle_policy.slurmd[0]' 2>/dev/null || true
 
         echo "  Destroying CodeBuild Terraform resources..."
         terraform -chdir="${cb_dir}" destroy -auto-approve \
