@@ -334,7 +334,7 @@ validate_cfn_template() {
     local template_keys_with_defaults
     template_keys_with_defaults=$(echo "${validation_output}" | jq -r '
         .Parameters[] |
-        .ParameterKey + ":" + (if .DefaultValue then "has_default" else "no_default" end)
+        .ParameterKey + ":" + (if has("DefaultValue") then "has_default" else "no_default" end)
     ' 2>/dev/null)
 
     if [[ -z "${template_keys_with_defaults}" ]]; then
@@ -456,6 +456,10 @@ resolve_tf_vars() {
 
     # Inject training_plan_arn into the first instance group if provided
     if [[ -n "${training_plan_arn}" ]]; then
+        # Remove existing training_plan_arn if present (idempotent re-run)
+        sed -i.bak '/training_plan_arn/d' "${target_file}"
+        rm -f "${target_file}.bak"
+
         awk -v plan_arn="${training_plan_arn}" '
             /lifecycle_script/ && !plan_done {
                 print

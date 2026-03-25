@@ -591,7 +591,15 @@ echo "Configuring login service NLB..."
 
 # Wait for the login service to exist
 echo "  Waiting for slurm-login-slinky service..."
+MAX_WAIT=60
+WAIT_COUNT=0
 until kubectl get service slurm-login-slinky -n slurm &>/dev/null; do
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    if [[ ${WAIT_COUNT} -ge ${MAX_WAIT} ]]; then
+        echo "Error: Timed out waiting for slurm-login-slinky service (${MAX_WAIT} attempts)." >&2
+        echo "  Check Slurm cluster status: kubectl -n slurm get pods" >&2
+        exit 1
+    fi
     sleep 5
 done
 echo "  Service found."

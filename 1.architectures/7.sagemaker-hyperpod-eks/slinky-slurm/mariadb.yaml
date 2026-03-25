@@ -16,7 +16,7 @@ spec:
     generate: true
   storage:
     size: 16Gi
-    storageClassName: gp2
+    storageClassName: gp3
   myCnf: |
     [mariadb]
     bind-address=*

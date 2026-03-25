@@ -298,15 +298,14 @@ deploy_cfn() {
         echo "Stack '${STACK_NAME}' created successfully."
     elif [[ "${stack_status}" =~ ^(CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE)$ ]]; then
         echo "  Stack already exists (status: ${stack_status}). Updating..."
-        if aws cloudformation update-stack \
+        local update_output
+        if update_output=$(aws cloudformation update-stack \
             --region "${AWS_REGION}" \
             --stack-name "${STACK_NAME}" \
             --template-url "${template_url}" \
             --parameters "file://${resolved_file}" \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND 2>&1 | \
-            grep -q "No updates are to be performed"; then
-            echo "  No updates needed — stack is already up to date."
-        else
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND 2>&1); then
+            # Update initiated successfully
             echo ""
             echo "Stack update initiated. Waiting for completion..."
             echo ""
@@ -316,6 +315,12 @@ deploy_cfn() {
                 --stack-name "${STACK_NAME}"
 
             echo "Stack '${STACK_NAME}' updated successfully."
+        elif echo "${update_output}" | grep -q "No updates are to be performed"; then
+            echo "  No updates needed — stack is already up to date."
+        else
+            echo "Error updating stack: ${update_output}" >&2
+            rm -f "${resolved_file}"
+            exit 1
         fi
     else
         echo "Error: Stack '${STACK_NAME}' is in state '${stack_status}'."

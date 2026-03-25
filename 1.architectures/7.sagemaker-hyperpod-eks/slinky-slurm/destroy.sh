@@ -115,7 +115,12 @@ if [[ -f "${SCRIPT_DIR}/env_vars.sh" ]]; then
     source "${SCRIPT_DIR}/env_vars.sh"
 fi
 
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null) || {
+    echo "WARNING: Could not determine AWS account ID. Check your AWS credentials."
+    echo "  IAM resources (policies, roles, Pod Identity associations) will NOT be cleaned up."
+    echo "  Proceeding with Kubernetes-only teardown..."
+    AWS_ACCOUNT_ID=""
+}
 
 ###########################
 ## Uninstall Slurm ########
@@ -274,7 +279,9 @@ else
 fi
 
 # Delete IAM role and policy
-if aws iam get-role --role-name "${LB_CONTROLLER_IAM_ROLE_NAME}" &>/dev/null; then
+if [[ -z "${AWS_ACCOUNT_ID}" ]]; then
+    echo "  WARNING: Skipping LB Controller IAM cleanup — AWS_ACCOUNT_ID not available."
+elif aws iam get-role --role-name "${LB_CONTROLLER_IAM_ROLE_NAME}" &>/dev/null; then
     echo "  Detaching policy from role ${LB_CONTROLLER_IAM_ROLE_NAME}..."
     LB_POLICY_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:policy/${LB_CONTROLLER_IAM_POLICY_NAME}"
     aws iam detach-role-policy \
@@ -309,6 +316,20 @@ kubectl delete namespace cert-manager 2>/dev/null || echo "  Namespace cert-mana
 
 echo ""
 echo "Deleting CodeBuild infrastructure..."
+
+# Clean up S3 build context bucket and ECR repository before deleting the
+# CodeBuild stack (non-empty ECR repos prevent CFN stack deletion).
+if [[ -n "${AWS_ACCOUNT_ID}" && -n "${AWS_REGION}" ]]; then
+    local_bucket_name="dlc-slurmd-codebuild-${AWS_ACCOUNT_ID}-${AWS_REGION}"
+    echo "  Deleting S3 bucket: ${local_bucket_name}"
+    aws s3 rb "s3://${local_bucket_name}" --force 2>/dev/null || \
+        echo "  S3 bucket not found or already deleted."
+fi
+
+echo "  Deleting ECR repository: dlc-slurmd"
+aws ecr delete-repository --repository-name dlc-slurmd \
+    --force --region "${AWS_REGION}" 2>/dev/null || \
+    echo "  ECR repo not found or already deleted."
 
 if [[ "${INFRA}" == "cfn" ]]; then
     if aws cloudformation describe-stacks \
