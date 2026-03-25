@@ -39,6 +39,8 @@ Resources:
   ECRRepository:
     Type: AWS::ECR::Repository
     Condition: ShouldCreateECR
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       RepositoryName: !Ref RepositoryName
       ImageScanningConfiguration:

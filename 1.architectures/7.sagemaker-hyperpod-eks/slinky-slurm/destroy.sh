@@ -317,21 +317,10 @@ kubectl delete namespace cert-manager 2>/dev/null || echo "  Namespace cert-mana
 echo ""
 echo "Deleting CodeBuild infrastructure..."
 
-# Clean up S3 build context bucket and ECR repository before deleting the
-# CodeBuild stack (non-empty ECR repos prevent CFN stack deletion).
-if [[ -n "${AWS_ACCOUNT_ID}" && -n "${AWS_REGION}" ]]; then
-    local_bucket_name="dlc-slurmd-codebuild-${AWS_ACCOUNT_ID}-${AWS_REGION}"
-    echo "  Deleting S3 bucket: ${local_bucket_name}"
-    aws s3 rb "s3://${local_bucket_name}" --force 2>/dev/null || \
-        echo "  S3 bucket not found or already deleted."
-fi
-
-echo "  Deleting ECR repository: dlc-slurmd"
-aws ecr delete-repository --repository-name dlc-slurmd \
-    --force --region "${AWS_REGION}" 2>/dev/null || \
-    echo "  ECR repo not found or already deleted."
-
 if [[ "${INFRA}" == "cfn" ]]; then
+    # The ECR repository has DeletionPolicy: Retain so CFN will not attempt
+    # to delete it (avoids failure when images exist). It is preserved for
+    # the customer and listed in the summary below.
     if aws cloudformation describe-stacks \
         --stack-name "${CODEBUILD_STACK_NAME}" \
         --region "${AWS_REGION}" &>/dev/null; then
@@ -349,6 +338,12 @@ if [[ "${INFRA}" == "cfn" ]]; then
 else
     cb_dir="${SCRIPT_DIR}/codebuild-tf"
     if [[ -d "${cb_dir}" ]] && [[ -f "${cb_dir}/terraform.tfstate" ]]; then
+        # Remove the ECR repository from Terraform state so that
+        # 'terraform destroy' does not attempt to delete it (avoids failure
+        # when images exist). The repo is preserved for the customer.
+        terraform -chdir="${cb_dir}" state rm aws_ecr_repository.slurmd 2>/dev/null || true
+        terraform -chdir="${cb_dir}" state rm aws_ecr_lifecycle_policy.slurmd 2>/dev/null || true
+
         echo "  Destroying CodeBuild Terraform resources..."
         terraform -chdir="${cb_dir}" destroy -auto-approve \
             -var="source_s3_bucket=unused"
@@ -411,7 +406,32 @@ rm -f "${SCRIPT_DIR}/lustre-pvc-slurm.yaml"
 rm -f "${SCRIPT_DIR}/env_vars.sh"
 echo "  Cleaned up."
 
+###########################
+## Preserved Resources ####
+###########################
+
 echo ""
+echo "The following resources were intentionally preserved:"
+echo ""
+
+# Check for S3 build context bucket
+if [[ -n "${AWS_ACCOUNT_ID}" && -n "${AWS_REGION}" ]]; then
+    PRESERVED_BUCKET="dlc-slurmd-codebuild-${AWS_ACCOUNT_ID}-${AWS_REGION}"
+    if aws s3api head-bucket --bucket "${PRESERVED_BUCKET}" 2>/dev/null; then
+        echo "  S3 bucket: ${PRESERVED_BUCKET}"
+        echo "    To delete: aws s3 rb s3://${PRESERVED_BUCKET} --force"
+        echo ""
+    fi
+fi
+
+# Check for ECR repository
+if aws ecr describe-repositories --repository-names dlc-slurmd \
+    --region "${AWS_REGION}" &>/dev/null 2>&1; then
+    echo "  ECR repository: dlc-slurmd"
+    echo "    To delete: aws ecr delete-repository --repository-name dlc-slurmd --force --region ${AWS_REGION}"
+    echo ""
+fi
+
 echo "=========================================="
 echo "  Teardown Complete"
 echo "=========================================="
