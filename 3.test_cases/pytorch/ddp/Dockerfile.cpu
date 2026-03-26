@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+# --- ADD THIS ---
+# Essential for torchvision image processing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglx-mesa0 \
+    libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir mlflow==2.13.2 sagemaker-mlflow==0.1.0
+RUN pip install torch==2.10.0+cpu torchvision==0.25.0+cpu --index-url https://download.pytorch.org/whl/cpu
+
+WORKDIR /workspace
+
+# --- CHANGE THESE ---
+COPY ddp.py /workspace/
+COPY slurm/data/ /workspace/data/
+
+# Deleting these prevents the "unzip race condition" entirely
+RUN rm -f /workspace/data/MNIST/raw/*.gz
