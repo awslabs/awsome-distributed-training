@@ -171,7 +171,7 @@ Resources:
             global:
               scrape_interval: 1m
               evaluation_interval: 2m
-              scrape_timeout: 5m
+              scrape_timeout: 30s
 
             scrape_configs:
               - job_name: slurm_exporter
@@ -207,14 +207,6 @@ Resources:
                       - name: tag:parallelcluster:cluster-name
                         values:
                           - ${PARALLELCLUSTER_NAME}
-                      - name: instance-type
-                        values:
-                          - p4d.24xlarge
-                          - p4de.24xlarge
-                          - p5.48xlarge
-                          - p5e.48xlarge
-                          - p5en.48xlarge
-                          - p6-b200.48xlarge
 
               - job_name: dcgm_exporter
                 scrape_interval: 60s
