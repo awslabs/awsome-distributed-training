@@ -137,6 +137,7 @@ def main(args):
     dist.init_process_group()
     global_rank = dist.get_rank()
     device = global_rank % torch.cuda.device_count()
+    torch.cuda.set_device(device)
     world_size = dist.get_world_size()
     
     if args.bf16:
