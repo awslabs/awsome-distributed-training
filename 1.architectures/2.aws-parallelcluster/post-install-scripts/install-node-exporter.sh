@@ -14,7 +14,7 @@
 #             Sequence:
 #               - Script: s3://<bucket>/install-node-exporter.sh
 #               # Or use GitHub raw URL directly (no S3 upload required):
-#               # - Script: https://raw.githubusercontent.com/awslabs/awsome-distributed-training/main/1.architectures/2.aws-parallelcluster/utils/install-node-exporter.sh
+#               # - Script: https://raw.githubusercontent.com/awslabs/awsome-distributed-training/main/1.architectures/2.aws-parallelcluster/post-install-scripts/install-node-exporter.sh
 #
 # Environment variables:
 #   NODE_EXPORTER_VERSION: Version to install (default: 1.9.1)
@@ -65,14 +65,14 @@ download_with_retry() {
     local max_attempts=3
     local timeout=30
 
-    for attempt in $(seq 1 $max_attempts); do
+    for attempt in $(seq 1 "$max_attempts"); do
         echo "[INFO] Downloading ${url} (attempt ${attempt}/${max_attempts})"
-        if wget --timeout=${timeout} --tries=1 --quiet -O "$output" "$url"; then
+        if wget --timeout="${timeout}" --tries=1 --quiet -O "$output" "$url"; then
             echo "[INFO] Download successful"
             return 0
         fi
         echo "[WARN] Download failed (attempt ${attempt}/${max_attempts})"
-        if [ $attempt -lt $max_attempts ]; then
+        if [ "$attempt" -lt "$max_attempts" ]; then
             sleep 5
         fi
     done
@@ -85,7 +85,7 @@ download_with_retry "${DOWNLOAD_URL}" "${TMP_DIR}/${TARBALL}" || exit 1
 download_with_retry "${CHECKSUM_URL}" "${TMP_DIR}/sha256sums.txt" || exit 1
 
 echo "[INFO] Verifying checksum"
-grep "${TARBALL}" "${TMP_DIR}/sha256sums.txt" | sha256sum --check --status
+(cd "$TMP_DIR" && grep "${TARBALL}" sha256sums.txt | sha256sum --check --status)
 echo "[INFO] Checksum verified"
 
 tar -xzf "${TMP_DIR}/${TARBALL}" -C "${TMP_DIR}"
