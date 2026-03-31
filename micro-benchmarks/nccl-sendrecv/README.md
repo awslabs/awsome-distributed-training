@@ -2,6 +2,10 @@
 
 A minimal NCCL point-to-point benchmark that measures send/recv latency and bandwidth across GPUs in a ring topology. Designed to run on AWS SageMaker HyperPod clusters with Slurm and EFA.
 
+## Why this exists
+
+The repo already includes [`micro-benchmarks/nccl-tests/`](../nccl-tests/), which wraps NVIDIA's `nccl-tests` suite (including `sendrecv_perf`). This standalone benchmark is a minimal, self-contained alternative — no `nccl-tests` build dependency, a single C file, and easy to modify. It is intended as a starting point for users who want to understand or extend NCCL send/recv patterns without pulling in the full suite.
+
 ## What it does
 
 Each MPI rank sends a 64 MB buffer to its right neighbour and receives from its left neighbour in a ring pattern using `ncclSend`/`ncclRecv` grouped calls. After a warm-up phase, it runs 100 timed iterations and reports average latency and bandwidth.
@@ -81,6 +85,6 @@ Message size    : 67108864 bytes (64 MB)
 Iterations      : 100
 Avg latency     : 2.450 ms
 Algo BW (1-dir) : 27.39 GB/s
-Bus BW (bidir)  : 54.78 GB/s
+Bidir throughput : 54.78 GB/s
 -----------------------------------------------
 ```

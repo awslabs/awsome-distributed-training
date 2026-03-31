@@ -118,11 +118,18 @@ int main(int argc, char *argv[])
         total_ms += (double)ms;
     }
 
+    /* Use the slowest rank's total time for an accurate end-to-end picture */
+    double max_total_ms;
+    MPI_Reduce(&total_ms, &max_total_ms, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
     /* Report from rank 0 */
-    double avg_ms = total_ms / iterations;
-    double bw_gbps = (2.0 * msg_size) / (avg_ms * 1e-3) / 1e9;
-    /* Algorithm BW (single direction) */
+    double avg_ms = max_total_ms / iterations;
+    /* Algorithmic BW: single-direction throughput (msg_size / time) */
     double algo_bw_gbps = (double)msg_size / (avg_ms * 1e-3) / 1e9;
+    /* Bidirectional throughput: 2x algo BW since each rank sends and receives
+       simultaneously.  Note: this is NOT the same as nccl-tests "busBw", which
+       normalises by the collective's communication pattern. */
+    double bidir_gbps = (2.0 * msg_size) / (avg_ms * 1e-3) / 1e9;
 
     if (rank == 0) {
         printf("---------- NCCL Send/Recv Ring Test ----------\n");
@@ -132,7 +139,7 @@ int main(int argc, char *argv[])
         printf("Iterations      : %d\n", iterations);
         printf("Avg latency     : %.3f ms\n", avg_ms);
         printf("Algo BW (1-dir) : %.2f GB/s\n", algo_bw_gbps);
-        printf("Bus BW (bidir)  : %.2f GB/s\n", bw_gbps);
+        printf("Bidir throughput : %.2f GB/s\n", bidir_gbps);
         printf("-----------------------------------------------\n");
     }
 
