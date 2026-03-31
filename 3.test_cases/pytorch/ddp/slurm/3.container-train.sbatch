@@ -18,13 +18,15 @@ declare -a ARGS=(
 )
 
 declare -a TORCHRUN_ARGS=(
-    --nproc_per_node=4     # For GPU: Set this to number of GPUs per node
+    --nproc_per_node=$NPROC_PER_NODE     # For GPU: Set this to number of GPUs per node
     --nnodes=$SLURM_JOB_NUM_NODES
     --rdzv_id=$SLURM_JOB_ID
     --rdzv_backend=c10d
     --rdzv_endpoint=$(hostname)
 )
 
+# Use NPROC_PER_NODE environment variable if set, otherwise default to 4
+NPROC_PER_NODE=${NPROC_PER_NODE:-4}
 
 declare -a TRAIN_ARGS=(
     --total_epochs 500
