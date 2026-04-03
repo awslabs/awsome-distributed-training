@@ -18,67 +18,108 @@ is_supported_instance() {
 }
 
 validate_instances() {
-    local has_unsupported=false
-    
     echo "Validating instance types..."
+    local supported_count=0
     while IFS= read -r node; do
         instance_type=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.node\.kubernetes\.io/instance-type}')
         if ! is_supported_instance "$instance_type"; then
-            echo "Error: Node $node has unsupported instance type: $instance_type"
-            has_unsupported=true
+            echo "Skipping node $node (unsupported instance type: $instance_type)"
+        else
+            supported_count=$((supported_count + 1))
         fi
     done < <(kubectl get nodes --no-headers -o custom-columns=NAME:.metadata.name)
 
-    if [ "$has_unsupported" = true ]; then
-        echo "This script only works with instances that support node topology information."
+    if [ "$supported_count" -eq 0 ]; then
+        echo "No supported instance types found in the cluster."
         exit 1
     fi
-    echo "Instance type validation passed."
+    echo "Found $supported_count supported node(s)."
+}
+
+get_supported_nodes() {
+    kubectl get nodes --no-headers -o custom-columns=NAME:.metadata.name | while read -r node; do
+        instance_type=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.node\.kubernetes\.io/instance-type}')
+        if is_supported_instance "$instance_type"; then
+            echo "$node"
+        fi
+    done
 }
 
 get_unique_values() {
     local layer=$1
-    kubectl get nodes --no-headers -L "topology.k8s.aws/network-node-layer-$layer" | awk "{print \$NF}" | sort | uniq
+    for node in $SUPPORTED_NODES; do
+        kubectl get node "$node" -o jsonpath="{.metadata.labels.topology\.k8s\.aws/network-node-layer-$layer}"
+        echo
+    done | sort | uniq
 }
 
 validate_instances
+
+SUPPORTED_NODES=$(get_supported_nodes)
 
 echo "Getting layer information..."
 layer1=($(get_unique_values 1))
 layer2=($(get_unique_values 2))
 layer3=($(get_unique_values 3))
 
-echo "flowchart TD"
-echo "    A[\"Cluster Topology\"]"
+# Build Mermaid diagram
+mermaid="flowchart TD"
+mermaid+=$'\n    A["Cluster Topology"]'
 
-# Layer 1
 for l1 in "${layer1[@]}"; do
     l1_id=$(echo "$l1" | sed 's/[^a-zA-Z0-9]/_/g')
-    echo "    A --> L1_${l1_id}[\"Layer 1: ${l1}\"]"
+    mermaid+=$'\n    A --> L1_'"${l1_id}[\"Layer 1: ${l1}\"]"  
 done
 
-# Layer 2
 for l2 in "${layer2[@]}"; do
     l2_id=$(echo "$l2" | sed 's/[^a-zA-Z0-9]/_/g')
-    parent=$(kubectl get nodes --no-headers -L topology.k8s.aws/network-node-layer-1,topology.k8s.aws/network-node-layer-2 | 
-             awk -v l2="$l2" '$NF == l2 {print $(NF-1)}' | head -n1)
+    for node in $SUPPORTED_NODES; do
+        val=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.k8s\.aws/network-node-layer-2}')
+        if [ "$val" = "$l2" ]; then
+            parent=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.k8s\.aws/network-node-layer-1}')
+            break
+        fi
+    done
     parent_id=$(echo "$parent" | sed 's/[^a-zA-Z0-9]/_/g')
-    echo "    L1_${parent_id} --> L2_${l2_id}[\"Layer 2: ${l2}\"]"
+    mermaid+=$'\n    L1_'"${parent_id} --> L2_${l2_id}[\"Layer 2: ${l2}\"]"  
 done
 
-# Layer 3
 for l3 in "${layer3[@]}"; do
     l3_id=$(echo "$l3" | sed 's/[^a-zA-Z0-9]/_/g')
-    parent=$(kubectl get nodes --no-headers -L topology.k8s.aws/network-node-layer-2,topology.k8s.aws/network-node-layer-3 | 
-             awk -v l3="$l3" '$NF == l3 {print $(NF-1)}' | head -n1)
+    for node in $SUPPORTED_NODES; do
+        val=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.k8s\.aws/network-node-layer-3}')
+        if [ "$val" = "$l3" ]; then
+            parent=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.k8s\.aws/network-node-layer-2}')
+            break
+        fi
+    done
     parent_id=$(echo "$parent" | sed 's/[^a-zA-Z0-9]/_/g')
-    echo "    L2_${parent_id} --> L3_${l3_id}[\"Layer 3: ${l3}\"]"
+    mermaid+=$'\n    L2_'"${parent_id} --> L3_${l3_id}[\"Layer 3: ${l3}\"]"  
 done
 
-kubectl get nodes --no-headers | while read -r node rest; do
+for node in $SUPPORTED_NODES; do
     node_id=$(echo "$node" | sed 's/[^a-zA-Z0-9]/_/g')
-    l3_parent=$(kubectl get nodes "$node" -o jsonpath='{.metadata.labels.topology\.k8s\.aws/network-node-layer-3}')
+    l3_parent=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.k8s\.aws/network-node-layer-3}')
     l3_parent_id=$(echo "$l3_parent" | sed 's/[^a-zA-Z0-9]/_/g')
-    echo "    L3_${l3_parent_id} --> N_${node_id}[\"${node}\"]"
+    mermaid+=$'\n    L3_'"${l3_parent_id} --> N_${node_id}[\"${node}\"]"  
 done
+
+echo "$mermaid"
+
+# Generate HTML visualization
+OUTPUT_FILE="topology.html"
+cat > "$OUTPUT_FILE" <<EOF
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Cluster Topology</title></head>
+<body>
+  <pre class="mermaid">
+${mermaid}
+  </pre>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({startOnLoad:true});</script>
+</body></html>
+EOF
+
+echo "Topology saved to $OUTPUT_FILE"
+open "$OUTPUT_FILE" 2>/dev/null || xdg-open "$OUTPUT_FILE" 2>/dev/null || echo "Open $OUTPUT_FILE in your browser"
 
