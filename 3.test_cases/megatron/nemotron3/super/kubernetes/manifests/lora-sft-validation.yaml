@@ -1,0 +1,270 @@
+# Nemotron 3 Super — LoRA SFT Validation on 1x p5en.48xlarge (8x H200)
+#
+# Two-phase job:
+#   Phase 1 (single-node): Download HF model + convert to Megatron format on FSx
+#   Phase 2 (single-node): Run LoRA SFT training with Megatron Bridge
+#
+# Single-node to match checkpoint parallelism (TP=1, EP=8 = 8 GPUs)
+# and avoid cross-node checkpoint resharding issues.
+#
+# Targets one free p5en node via node affinity:
+#   - ip-10-240-69-134
+#
+# Container: nemotron-3-super:26.02 from Jakarta ECR
+# Uses Megatron Bridge finetune_nemotron_3_super.py (not NeMo llm API)
+# Note: FP8 model conversion fails (CPU can't index Float8_e4m3fn), using BF16 model
+#
+# Apply:
+#   kubectl apply -f lora-sft-validation.yaml
+#
+# Watch:
+#   kubectl logs -n nchkumar -f -l app=nemotron3-super-lora-sft
+#
+# Clean:
+#   kubectl delete -f lora-sft-validation.yaml
+---
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: nemotron3-super-lora-sft
+  namespace: nchkumar
+spec:
+  network:
+    enableDNSHostnames: true
+    publishNotReadyAddresses: true
+  replicatedJobs:
+    - name: worker
+      replicas: 1
+      template:
+        spec:
+          parallelism: 1
+          completions: 1
+          completionMode: Indexed
+          backoffLimit: 0
+          template:
+            metadata:
+              labels:
+                app: nemotron3-super-lora-sft
+            spec:
+              # Target the 2 free p5en nodes
+              affinity:
+                nodeAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                      - matchExpressions:
+                          - key: kubernetes.io/hostname
+                            operator: In
+                            values:
+                              - ip-10-240-69-134.ap-southeast-3.compute.internal
+              restartPolicy: Never
+              volumes:
+                - name: shmem
+                  emptyDir:
+                    medium: Memory
+                    sizeLimit: 200Gi
+                - name: fsx
+                  persistentVolumeClaim:
+                    claimName: fsx-scratch-pvc
+              containers:
+                - name: trainer
+                  image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:26.02
+                  imagePullPolicy: Always
+                  workingDir: /opt/Megatron-Bridge
+                  resources:
+                    requests:
+                      nvidia.com/gpu: "8"
+                      vpc.amazonaws.com/efa: "16"
+                      memory: "1800Gi"
+                      cpu: "190"
+                    limits:
+                      nvidia.com/gpu: "8"
+                      vpc.amazonaws.com/efa: "16"
+                      memory: "1800Gi"
+                      cpu: "190"
+                  env:
+                    # --- NCCL / EFA ---
+                    - name: NCCL_DEBUG
+                      value: "WARN"
+                    - name: NCCL_SOCKET_IFNAME
+                      value: "^lo,docker,veth"
+                    - name: NCCL_TIMEOUT
+                      value: "1800"
+                    - name: TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC
+                      value: "1800"
+                    - name: FI_PROVIDER
+                      value: "efa"
+                    - name: FI_EFA_USE_DEVICE_RDMA
+                      value: "1"
+                    - name: FI_EFA_FORK_SAFE
+                      value: "1"
+                    - name: FI_EFA_USE_HUGE_PAGE
+                      value: "0"
+                    - name: TORCH_NCCL_AVOID_RECORD_STREAMS
+                      value: "1"
+                    - name: NCCL_NVLS_ENABLE
+                      value: "0"
+                    # --- Memory ---
+                    - name: PYTORCH_ALLOC_CONF
+                      value: "expandable_segments:True"
+                    - name: CUDA_DEVICE_MAX_CONNECTIONS
+                      value: "1"
+                    # --- Transformer Engine ---
+                    - name: NVTE_DP_AMAX_REDUCE_INTERVAL
+                      value: "0"
+                    - name: NVTE_ASYNC_AMAX_REDUCTION
+                      value: "1"
+                    - name: NVTE_FUSED_ATTN
+                      value: "0"
+                    # --- HuggingFace ---
+                    - name: HF_HOME
+                      value: "/scratch/cache/huggingface"
+                    - name: HF_TOKEN
+                      value: "${HF_TOKEN}"  # Set via: kubectl set env ... or replace before applying
+                    # --- Torchrun discovery ---
+                    - name: MASTER_ADDR
+                      value: "nemotron3-super-lora-sft-worker-0-0.nemotron3-super-lora-sft"
+                    - name: MASTER_PORT
+                      value: "29500"
+                  command:
+                    - bash
+                    - -c
+                    - |
+                      set -euo pipefail
+
+                      # ============================================================
+                      # Fix libcusparseLt.so.0 symlink (container packaging issue)
+                      # ============================================================
+                      ln -sf /usr/lib/x86_64-linux-gnu/libcusparseLt/13/libcusparseLt.so.0.9.0.3 \
+                             /usr/lib/x86_64-linux-gnu/libcusparseLt/13/libcusparseLt.so.0
+                      export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/libcusparseLt/13:${LD_LIBRARY_PATH:-}
+
+                      # ============================================================
+                      # Configuration
+                      # ============================================================
+                      NODE_RANK=${JOB_COMPLETION_INDEX}
+                      NUM_NODES=1
+                      GPUS_PER_NODE=8
+                      WORK_DIR=/scratch/nemotron3-super
+                      HF_MODEL=nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16
+                      MEGATRON_CKPT=${WORK_DIR}/megatron-ckpt
+                      RESULTS_DIR=${WORK_DIR}/results/lora-sft-validation
+
+                      echo "============================================================"
+                      echo "Nemotron 3 Super LoRA SFT Validation"
+                      echo "============================================================"
+                      echo "  Node:        ${NODE_RANK} of ${NUM_NODES}"
+                      echo "  Hostname:    $(hostname)"
+                      echo "  MASTER_ADDR: ${MASTER_ADDR}"
+                      echo "  GPUs:        $(nvidia-smi -L 2>/dev/null | wc -l)"
+                      echo "  EFA devices: $(ls /dev/infiniband/ 2>/dev/null | wc -l)"
+                      echo "  Working dir: $(pwd)"
+                      echo "============================================================"
+
+                      # Create directories (rank 0 only)
+                      if [ "${NODE_RANK}" = "0" ]; then
+                        mkdir -p ${WORK_DIR}/{cache,results,megatron-ckpt}
+                        mkdir -p ${RESULTS_DIR}
+                      fi
+
+                      # Wait for DNS resolution of master
+                      echo "Waiting for master DNS (${MASTER_ADDR})..."
+                      for i in $(seq 1 180); do
+                        if getent hosts ${MASTER_ADDR} >/dev/null 2>&1; then
+                          echo "Master DNS resolved after ${i}s"
+                          break
+                        fi
+                        if [ "$i" = "180" ]; then
+                          echo "ERROR: DNS resolution timed out after 180s"
+                          exit 1
+                        fi
+                        sleep 1
+                      done
+
+                      # ============================================================
+                      # Phase 1: Convert HF checkpoint -> Megatron format
+                      # Single-node only (rank 0). Other ranks wait for completion.
+                      # (Skip if already converted — check for latest_checkpointed_iteration.txt marker)
+                      # ============================================================
+                      CKPT_MARKER="${MEGATRON_CKPT}/latest_checkpointed_iteration.txt"
+                      # Force Lustre metadata refresh before checking
+                      ls ${MEGATRON_CKPT}/ >/dev/null 2>&1 || true
+                      if [ ! -f "${CKPT_MARKER}" ]; then
+                        if [ "${NODE_RANK}" = "0" ]; then
+                          echo "Phase 1: Converting HF checkpoint to Megatron format (single-node)..."
+                          echo "  Source: ${HF_MODEL}"
+                          echo "  Target: ${MEGATRON_CKPT}"
+
+                          uv run --no-sync torchrun \
+                            --nproc-per-node=${GPUS_PER_NODE} \
+                            --nnodes=1 \
+                            --node-rank=0 \
+                            --master-addr=localhost \
+                            --master-port=${MASTER_PORT} \
+                            examples/conversion/convert_checkpoints.py import \
+                            --hf-model ${HF_MODEL} \
+                            --megatron-path ${MEGATRON_CKPT} \
+                            --tp 1 \
+                            --ep 8
+
+                          echo "Phase 1: Checkpoint conversion complete."
+                        else
+                          echo "Phase 1: Waiting for rank 0 to finish checkpoint conversion..."
+                          WAIT_COUNT=0
+                          while true; do
+                            # Force Lustre metadata refresh by listing the directory
+                            ls ${MEGATRON_CKPT}/ >/dev/null 2>&1
+                            if [ -f "${CKPT_MARKER}" ]; then
+                              echo "Phase 1: Checkpoint ready (detected after ${WAIT_COUNT}0s)."
+                              break
+                            fi
+                            WAIT_COUNT=$((WAIT_COUNT + 1))
+                            if [ ${WAIT_COUNT} -ge 360 ]; then
+                              echo "ERROR: Timed out waiting for checkpoint after 3600s"
+                              echo "  Expected: ${CKPT_MARKER}"
+                              ls -la ${MEGATRON_CKPT}/ 2>&1 || true
+                              exit 1
+                            fi
+                            sleep 10
+                          done
+                        fi
+                      else
+                        echo "Phase 1: SKIPPED — Megatron checkpoint already exists at ${MEGATRON_CKPT}"
+                      fi
+
+                      # ============================================================
+                      # Phase 2: LoRA SFT Training
+                      # ============================================================
+                      echo "Phase 2: Starting LoRA SFT training..."
+
+                      uv run --no-sync torchrun \
+                        --nproc-per-node=${GPUS_PER_NODE} \
+                        --nnodes=${NUM_NODES} \
+                        --node-rank=${NODE_RANK} \
+                        --master-addr=${MASTER_ADDR} \
+                        --master-port=29501 \
+                        examples/models/nemotron_3/finetune_nemotron_3_super.py \
+                        --peft lora \
+                        --seq-length 2048 \
+                        checkpoint.pretrained_checkpoint=${MEGATRON_CKPT} \
+                        train.train_iters=20 \
+                        train.global_batch_size=8 \
+                        train.micro_batch_size=1 \
+                        train.eval_iters=0 \
+                        scheduler.lr_warmup_iters=5 \
+                        logger.log_interval=1 \
+                        model.tensor_model_parallel_size=1 \
+                        model.pipeline_model_parallel_size=1 \
+                        model.expert_model_parallel_size=8 \
+                        model.context_parallel_size=1 \
+                        model.sequence_parallel=True \
+                        model.seq_length=2048 \
+                        checkpoint.save=${RESULTS_DIR}/checkpoints
+
+                      echo "============================================================"
+                      echo "=== VALIDATION COMPLETE (node ${NODE_RANK}) ==="
+                      echo "============================================================"
+                  volumeMounts:
+                    - name: shmem
+                      mountPath: /dev/shm
+                    - name: fsx
+                      mountPath: /scratch

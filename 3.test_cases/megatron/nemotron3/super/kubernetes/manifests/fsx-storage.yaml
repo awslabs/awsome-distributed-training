@@ -1,0 +1,36 @@
+# FSx Lustre PV + PVC for nchkumar namespace
+#
+# Uses the shared 4.8TB FSx filesystem (fs-06f30943810be58b8) in Jakarta
+# Same filesystem used by paragao, iankouls, antonai, belevich
+# Note: 57.6TB filesystem (fs-0bb56078618eb3922) failed to mount (Lustre client issue)
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: fsx-pv-nchkumar
+spec:
+  capacity:
+    storage: 4800Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: fsx.csi.aws.com
+    volumeHandle: fs-06f30943810be58b8-nchkumar
+    volumeAttributes:
+      dnsname: fs-06f30943810be58b8.fsx.ap-southeast-3.amazonaws.com
+      mountname: e4k3dbmv
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fsx-pvc
+  namespace: nchkumar
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 4800Gi
+  volumeName: fsx-pv-nchkumar
+  storageClassName: ""

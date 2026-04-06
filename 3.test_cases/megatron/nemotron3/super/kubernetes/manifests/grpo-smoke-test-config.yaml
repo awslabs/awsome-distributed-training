@@ -1,0 +1,270 @@
+# Nemotron 3 Super — RLVR Smoke Test Config for 2x p5en.48xlarge (16x H200)
+#
+# Derived from the official super-v3 stage1_rlvr.yaml config:
+#   https://github.com/NVIDIA-NeMo/RL/blob/super-v3/examples/configs/super/stage1_rlvr.yaml
+#
+# Key changes from the full 109-node config:
+#   - cluster.num_nodes: 109 -> 2
+#   - megatron TP=4->2, EP=8->4, CP=8->1 (fits 16 GPUs: 2 TP * 4 EP * 1 CP * 2 DP = 16)
+#   - vLLM gen TP=4->2 (colocated with training)
+#   - GBS: 4096->16, num_prompts_per_step: 256->16
+#   - max_total_sequence_length: 65536->4096 (memory constrained)
+#   - max_num_steps: 1000000->20 (smoke test)
+#   - Disabled NeMo Gym (uses simple math reward for smoke test)
+#   - Disabled wandb, async GRPO
+#
+# This config is for VALIDATION ONLY — not production training.
+
+checkpointing:
+  enabled: true
+  checkpoint_dir: "/scratch/nemotron3-super/results/grpo-smoke-test"
+  metric_name: "val:total_reward/mean"
+  higher_is_better: true
+  keep_top_k: 3
+  save_period: 10
+  model_save_format: "safetensors"
+  save_consolidated: false
+
+grpo:
+  num_prompts_per_step: 16
+  num_generations_per_prompt: 4
+  num_val_generations_per_prompt: 2
+  max_rollout_turns: 1
+  max_num_epochs: 1
+  max_num_steps: 20
+  normalize_rewards: true
+  use_leave_one_out_baseline: true
+  advantage_clip_low: -50
+  advantage_clip_high: 50
+  val_period: -1
+  val_at_start: false
+  val_at_end: false
+  overlong_filtering: false
+  max_val_samples: null
+  val_batch_size: 16
+  seed: 42
+
+  use_dynamic_sampling: false
+  dynamic_sampling_max_gen_batches: 10
+  batch_multiplier: 1
+
+  penalize_invalid_tool_call: false
+  penalize_malformed_thinking: false
+
+  reward_shaping:
+    enabled: false
+  reward_scaling:
+    enabled: false
+
+  async_grpo:
+    enabled: false
+
+  seq_logprob_error_threshold: 2
+
+loss_fn:
+  reference_policy_kl_penalty: 0.0
+  reference_policy_kl_type: "k3"
+  kl_input_clamp_value: null
+  kl_output_clamp_value: null
+
+  ratio_clip_min: 0.2
+  ratio_clip_max: 0.28
+  ratio_clip_c: null
+  use_on_policy_kl_approximation: true
+  use_importance_sampling_correction: true
+  truncated_importance_sampling_ratio: 5
+  truncated_importance_sampling_ratio_min: null
+  truncated_importance_sampling_type: tis
+  sequence_level_importance_ratios: false
+  token_level_loss: true
+  force_on_policy_ratio: true
+  use_kl_in_reward: false
+
+policy:
+  model_name: "/scratch/nemotron3-super/models/nemotron3-super-hf"
+  tokenizer:
+    name: ${policy.model_name}
+    chat_template_kwargs: null
+  hf_config_overrides: {}
+  train_global_batch_size: 16
+  train_micro_batch_size: 1
+  generation_batch_size: 8
+  logprob_batch_size: 1
+  max_total_sequence_length: 4096
+  precision: "bfloat16"
+  logprob_chunk_size: 2048
+  offload_optimizer_for_logprob: false
+
+  dtensor_cfg:
+    _v2: true
+    enabled: false
+
+  megatron_cfg:
+    enabled: true
+    empty_unused_memory_level: 1
+    activation_checkpointing: true
+    # 2 nodes x 8 GPUs = 16 total
+    # TP=2 x EP=4 x CP=1 x DP=2 = 16
+    tensor_model_parallel_size: 2
+    expert_tensor_parallel_size: 1
+    expert_model_parallel_size: 4
+    pipeline_model_parallel_size: 1
+    num_layers_in_first_pipeline_stage: null
+    num_layers_in_last_pipeline_stage: null
+    context_parallel_size: 1
+    pipeline_dtype: ${policy.precision}
+    sequence_parallel: true
+    freeze_moe_router: true
+    moe_router_dtype: "fp32"
+    moe_router_load_balancing_type: "none"
+    moe_router_bias_update_rate: 1.0e-3
+    moe_permute_fusion: true
+    moe_enable_deepep: false
+    moe_token_dispatcher_type: "alltoall"
+    moe_aux_loss_coeff: 0.0
+    moe_router_enable_expert_bias: true
+    moe_shared_expert_overlap: false
+    apply_rope_fusion: True
+    bias_activation_fusion: False
+    defer_fp32_logits: True
+    moe_per_layer_logging: False
+
+    mtp_loss_scaling_factor: 0.0
+    mtp_use_repeated_layer: true
+    mtp_num_layers: 0
+    mtp_detach_heads: true
+
+    optimizer:
+      optimizer: "adam"
+      lr: 3.0e-6
+      min_lr: 3.0e-6
+      weight_decay: 0.0
+      bf16: true
+      fp16: false
+      params_dtype: "float32"
+
+      adam_beta1: 0.9
+      adam_beta2: 0.999
+      adam_eps: 1e-8
+
+      use_distributed_optimizer: true
+      use_precision_aware_optimizer: true
+
+      clip_grad: ${policy.max_grad_norm}
+
+      optimizer_cpu_offload: false
+      optimizer_offload_fraction: 0.0
+
+    scheduler:
+      start_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
+      end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
+      weight_decay_incr_style: "constant"
+      lr_decay_style: "constant"
+      lr_decay_iters: null
+      lr_warmup_iters: 5
+      lr_warmup_init: 3e-7
+
+    distributed_data_parallel_config:
+      grad_reduce_in_fp32: false
+      overlap_grad_reduce: false
+      overlap_param_gather: true
+      use_custom_fsdp: false
+      data_parallel_sharding_strategy: "optim_grads_params"
+
+    fp8_cfg:
+      enabled: false
+      fp8: "e4m3"
+      fp8_recipe: "blockwise"
+      fp8_param: false
+
+    env_vars: null
+
+  dynamic_batching:
+    enabled: False
+
+  sequence_packing:
+    enabled: True
+    train_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.train_micro_batch_size}}
+    logprob_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.logprob_batch_size}}
+    algorithm: "modified_first_fit_decreasing"
+    sequence_length_round: 64
+
+  make_sequence_length_divisible_by: ${policy.megatron_cfg.tensor_model_parallel_size}
+  max_grad_norm: 1.0
+
+  optimizer: null
+  scheduler: null
+
+  generation:
+    port_range_low: 11001
+    port_range_high: 15000
+    backend: "vllm"
+    max_new_tokens: ${policy.max_total_sequence_length}
+    temperature: 1.0
+    top_p: 1.0
+    top_k: null
+    stop_token_ids: null
+    stop_strings: null
+    vllm_cfg:
+      async_engine: true
+      precision: ${policy.precision}
+      kv_cache_dtype: "auto"
+      tensor_parallel_size: 2
+      pipeline_parallel_size: 1
+      expert_parallel_size: 1
+      gpu_memory_utilization: 0.8
+      max_model_len: ${policy.max_total_sequence_length}
+      enforce_eager: False
+      use_deep_gemm: False
+      num_last_layers_in_bf16: 0
+      num_first_layers_in_bf16: 0
+      enable_vllm_metrics_logger: false
+      skip_tokenizer_init: false
+
+    vllm_kwargs:
+      mamba_ssm_cache_dtype: "float32"
+      compilation_config:
+        cudagraph_capture_sizes: [1,2,4,8,16,32,64]
+    colocated:
+      enabled: false
+
+# Simple math reward for smoke test (no NeMo Gym dependency)
+data:
+  max_input_seq_length: null
+  shuffle: false
+  num_workers: 1
+  train:
+    data_path: "/scratch/nemotron3-super/data/train.jsonl"
+  validation:
+    data_path: "/scratch/nemotron3-super/data/val.jsonl"
+  default:
+    dataset_name: NemoGymDataset
+    env_name: "nemo_gym"
+    prompt_file: null
+    system_prompt_file: null
+    processor: "nemo_gym_data_processor"
+
+env:
+  should_use_nemo_gym: true
+  nemo_gym:
+    skip_venv_if_present: true
+    num_gpu_nodes: 0
+    port_range_low: 15001
+    port_range_high: 20000
+    config_paths:
+    - resources_servers/ns_tools/configs/ns_tools.yaml
+
+logger:
+  log_dir: "/scratch/nemotron3-super/results/grpo-smoke-test/logs"
+  num_val_samples_to_print: 0
+  wandb_enabled: false
+  tensorboard_enabled: false
+  mlflow_enabled: false
+  monitor_gpus: true
+  gpu_monitoring:
+    collection_interval: 10
+    flush_interval: 10
+
+cluster:
+  gpus_per_node: 8
+  num_nodes: 2

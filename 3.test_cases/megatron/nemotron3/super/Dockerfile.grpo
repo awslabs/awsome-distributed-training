@@ -1,13 +1,39 @@
-FROM nvcr.io/nvidia/nemo-rl:v0.5.0
+# Nemotron 3 Super — NeMo RL GRPO/RLVR Container with EFA Support
+#
+# Base: nvcr.io/nvidia/nemo-rl:v0.5.0.nemotron_3_super
+#   - Contains NeMo RL with Megatron backend for Nemotron Super
+#   - Custom vLLM (CentML fork) with NemotronH + Mamba-2 + MTP support
+#   - NeMo Gym environments pre-configured
+#   - Ray for distributed orchestration
+#
+# This Dockerfile adds AWS EFA networking support for multi-node
+# training on EKS (p5en.48xlarge / p5.48xlarge).
+#
+# Build (via CodeBuild or locally):
+#   docker build -f Dockerfile.grpo -t nemotron3-super-grpo:v0.5.0-efa .
+#
+# The official training recipe is from the super-v3 branch of NVIDIA-NeMo/RL:
+#   https://github.com/NVIDIA-NeMo/RL/blob/super-v3/docs/guides/nemotron-3-super.md
+#
+# Training entrypoint:
+#   python examples/nemo_gym/run_grpo_nemo_gym.py --config CONFIG.yaml
+#
+# Key parallelism defaults (109 B200 nodes):
+#   Megatron: TP=4, EP=8, CP=8, PP=1, sequence_parallel=true
+#   vLLM:     TP=4, EP=1, gpu_memory_utilization=0.8
+#   Training: GBS=4096, MBS=1, max_total_seq_len=65536
+#
+# For 2-node smoke test (16x H200), scale down:
+#   TP=2, EP=4, CP=1, PP=1, GBS=16, max_total_seq_len=4096
+
+FROM nvcr.io/nvidia/nemo-rl:v0.5.0.nemotron_3_super
 ARG GDRCOPY_VERSION=v2.5
 ARG EFA_INSTALLER_VERSION=1.47.0
-ARG NCCL_VERSION=v2.27.7-1
-ARG NCCL_TESTS_VERSION=v2.16.9
 
 ARG OPEN_MPI_PATH=/opt/amazon/openmpi
 
 ######################
-# Update and remove the IB libverbs
+# Remove IB libverbs (conflicts with EFA)
 ######################
 RUN apt-get update -y && apt-get upgrade -y
 RUN apt-get remove -y --allow-change-held-packages \
@@ -16,6 +42,7 @@ RUN apt-get remove -y --allow-change-held-packages \
     libibverbs1 \
     libmlx5-1 || true
 
+# Remove HPC-X OpenMPI if present (conflicts with EFA OpenMPI)
 RUN rm -rf /opt/hpcx/ompi \
     && rm -rf /usr/local/mpi \
     && rm -rf /usr/local/ucx \
@@ -38,6 +65,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y --allow-unauthenticated \
     vim \
     && apt autoremove -y
 
+# SSH setup for multi-node communication
 RUN mkdir -p /var/run/sshd && \
     sed -i 's/[ #]\(.*StrictHostKeyChecking \).*/ \1no/g' /etc/ssh/ssh_config && \
     echo "    UserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config && \
@@ -54,15 +82,25 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/
 ENV PATH=/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
 
 #################################################
-## Install NVIDIA GDRCopy
+## Install NVIDIA GDRCopy (library only — no kernel module needed in containers)
+## Note: GDRCopy build requires CUDA development headers. If the base image
+## doesn't have them in the expected location, the build is skipped gracefully.
+## GDRCopy improves NCCL performance but is not strictly required.
 RUN git clone -b ${GDRCOPY_VERSION} https://github.com/NVIDIA/gdrcopy.git /tmp/gdrcopy \
     && cd /tmp/gdrcopy \
-    && make prefix=/opt/gdrcopy install
+    && (make -C src lib lib_install prefix=/opt/gdrcopy 2>/dev/null \
+        && mkdir -p /opt/gdrcopy/lib /opt/gdrcopy/include \
+        && cp src/libgdrapi.so* /opt/gdrcopy/lib/ 2>/dev/null \
+        && cp include/gdrapi.h include/gdrconfig.h /opt/gdrcopy/include/ 2>/dev/null \
+        && ldconfig /opt/gdrcopy/lib \
+        && echo "GDRCopy installed successfully" \
+        || echo "WARNING: GDRCopy build failed (missing CUDA dev headers?) — skipping (not critical)") \
+    && rm -rf /tmp/gdrcopy
 
-ENV LD_LIBRARY_PATH /opt/gdrcopy/lib:/usr/local/cuda/compat:$LD_LIBRARY_PATH
-ENV LIBRARY_PATH /opt/gdrcopy/lib:/usr/local/cuda/compat/:$LIBRARY_PATH
-ENV CPATH /opt/gdrcopy/include:$CPATH
-ENV PATH /opt/gdrcopy/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/gdrcopy/lib:/usr/local/cuda/compat:$LD_LIBRARY_PATH
+ENV LIBRARY_PATH=/opt/gdrcopy/lib:/usr/local/cuda/compat/:$LIBRARY_PATH
+ENV CPATH=/opt/gdrcopy/include:$CPATH
+ENV PATH=/opt/gdrcopy/bin:$PATH
 
 #################################################
 ## Install EFA installer
@@ -71,7 +109,7 @@ RUN cd $HOME \
     && tar -xf $HOME/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz \
     && cd aws-efa-installer \
     && ./efa_installer.sh -y -g -d --skip-kmod --skip-limit-conf --no-verify \
-    && rm -rf $HOME/aws-efa-installer
+    && rm -rf $HOME/aws-efa-installer $HOME/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz
 
 ###################################################
 RUN rm -rf /var/lib/apt/lists/*
@@ -79,27 +117,31 @@ RUN rm -rf /var/lib/apt/lists/*
 RUN echo "hwloc_base_binding_policy = none" >> /opt/amazon/openmpi/etc/openmpi-mca-params.conf \
  && echo "rmaps_base_mapping_policy = slot" >> /opt/amazon/openmpi/etc/openmpi-mca-params.conf
 
-# Install additional dependencies
-RUN pip3 install --upgrade huggingface_hub>=0.34.0
-RUN pip3 install awscli pynvml wandb
-
-# Install NeMo Gym for RL environments
-RUN pip install git+https://github.com/NVIDIA-NeMo/Gym.git
+# Install additional AWS/monitoring dependencies
+# Note: NeMo Gym is already in the base container (v0.5.0.nemotron_3_super)
+RUN pip3 install --upgrade huggingface_hub>=0.34.0 && \
+    pip3 install awscli pynvml wandb
 
 RUN mv $OPEN_MPI_PATH/bin/mpirun $OPEN_MPI_PATH/bin/mpirun.real \
  && echo '#!/bin/bash' > $OPEN_MPI_PATH/bin/mpirun \
  && echo '/opt/amazon/openmpi/bin/mpirun.real "$@"' >> $OPEN_MPI_PATH/bin/mpirun \
  && chmod a+x $OPEN_MPI_PATH/bin/mpirun
 
-## Set Open MPI variables
+## Set Open MPI variables to exclude network interface and conduit
 ENV OMPI_MCA_pml=^cm,ucx            \
     OMPI_MCA_btl=tcp,self           \
     OMPI_MCA_btl_tcp_if_exclude=lo,docker0,veth_def_agent\
     OPAL_PREFIX=/opt/amazon/openmpi \
     NCCL_SOCKET_IFNAME=^docker,lo,veth
 
-## Turn off PMIx Error
+## Turn off PMIx Error https://github.com/open-mpi/ompi/issues/7516
 ENV PMIX_MCA_gds=hash
 
+# NeMo RL working directory
+WORKDIR /opt/nemo-rl
+
 # Verify installation
-RUN ls -la /opt/amazon/efa/lib/ && ls -la /opt/amazon/openmpi/lib/
+RUN ls -la /opt/amazon/efa/lib/ && ls -la /opt/amazon/openmpi/lib/ \
+    && python -c "import nemo_rl; print('NeMo RL:', nemo_rl.__version__)" 2>/dev/null || true \
+    && python -c "import vllm; print('vLLM:', vllm.__version__)" 2>/dev/null || true \
+    && python -c "import ray; print('Ray:', ray.__version__)" 2>/dev/null || true

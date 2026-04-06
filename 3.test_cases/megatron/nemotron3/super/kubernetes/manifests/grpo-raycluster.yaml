@@ -1,0 +1,207 @@
+# Nemotron 3 Super — RayCluster for NeMo RL GRPO on 2x p5en.48xlarge (Jakarta)
+#
+# NeMo RL uses Ray for distributed orchestration of the GRPO pipeline:
+#   - Actor (policy training) workers: Megatron-based, use all GPUs
+#   - Rollout (generation) workers: vLLM-based, share GPUs with actor
+#   - Reward workers: NeMo Gym environments (CPU or GPU)
+#
+# The Ray head node is CPU-only (scheduling/coordination).
+# Worker nodes get 8 GPUs + 16 EFA devices each.
+#
+# Container: nemotron3-super-grpo:v0.5.0-efa from Jakarta ECR
+#   Based on nvcr.io/nvidia/nemo-rl:v0.5.0.nemotron_3_super + EFA
+#
+# Apply:
+#   kubectl apply -f grpo-raycluster.yaml
+#
+# Submit job:
+#   kubectl exec -n nchkumar raycluster-nemotron-grpo-head-0 -- \
+#     ray job submit --no-wait -- \
+#     python examples/nemo_gym/run_grpo_nemo_gym.py \
+#       --config /fsx/nchkumar/nemotron3-super/configs/grpo-smoke-test.yaml
+#
+# Dashboard:
+#   kubectl port-forward -n nchkumar svc/raycluster-nemotron-grpo-head-svc 8265:8265
+#
+# Clean:
+#   kubectl delete -f grpo-raycluster.yaml
+---
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-nemotron-grpo
+  namespace: nchkumar
+  labels:
+    app: nemotron3-super-grpo
+spec:
+  rayVersion: "2.44.1"
+  enableInTreeAutoscaling: false
+
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      num-cpus: "0"   # Head is for scheduling only
+    template:
+      metadata:
+        labels:
+          app: nemotron3-super-grpo
+          component: head
+      spec:
+        # Head runs on any available node (no GPU needed)
+        containers:
+          - name: ray-head
+            # UPDATE: Replace with Jakarta ECR URI after image push
+            image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa
+            imagePullPolicy: Always
+            ports:
+              - containerPort: 6379   # GCS
+                name: gcs
+              - containerPort: 8265   # Dashboard
+                name: dashboard
+              - containerPort: 10001  # Client
+                name: client
+              - containerPort: 8080   # Metrics
+                name: metrics
+            resources:
+              requests:
+                cpu: "2"
+                memory: "16Gi"
+              limits:
+                cpu: "4"
+                memory: "32Gi"
+            env:
+              - name: RAY_USAGE_STATS_ENABLED
+                value: "0"
+              - name: RAY_DEDUP_LOGS
+                value: "1"
+            volumeMounts:
+              - name: fsx-scratch
+                mountPath: /scratch
+              - name: shmem
+                mountPath: /dev/shm
+        volumes:
+          - name: fsx-scratch
+            persistentVolumeClaim:
+              claimName: fsx-scratch-pvc
+          - name: shmem
+            emptyDir:
+              medium: Memory
+              sizeLimit: 16Gi
+
+  workerGroupSpecs:
+    - groupName: gpu-workers
+      replicas: 2
+      minReplicas: 2
+      maxReplicas: 2
+      rayStartParams:
+        num-gpus: "8"
+        resources: '"{\"accelerator_type_H200\": 1}"'
+      template:
+        metadata:
+          labels:
+            app: nemotron3-super-grpo
+            component: worker
+        spec:
+          # Target the 2 free p5en nodes
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values:
+                          - ip-10-240-69-134.ap-southeast-3.compute.internal
+                          - ip-10-240-92-178.ap-southeast-3.compute.internal
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: app
+                        operator: In
+                        values:
+                          - nemotron3-super-grpo
+                  topologyKey: kubernetes.io/hostname
+          restartPolicy: Never
+          containers:
+            - name: ray-worker
+              # UPDATE: Replace with Jakarta ECR URI after image push
+              image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa
+              imagePullPolicy: Always
+              lifecycle:
+                preStop:
+                  exec:
+                    command: ["/bin/sh", "-c", "ray stop"]
+              resources:
+                requests:
+                  nvidia.com/gpu: "8"
+                  vpc.amazonaws.com/efa: "16"
+                  memory: "1800Gi"
+                  cpu: "190"
+                limits:
+                  nvidia.com/gpu: "8"
+                  vpc.amazonaws.com/efa: "16"
+                  memory: "1800Gi"
+                  cpu: "190"
+              env:
+                # --- NCCL / EFA ---
+                - name: NCCL_DEBUG
+                  value: "WARN"
+                - name: NCCL_SOCKET_IFNAME
+                  value: "^lo,docker,veth"
+                - name: FI_PROVIDER
+                  value: "efa"
+                - name: FI_EFA_USE_DEVICE_RDMA
+                  value: "1"
+                - name: FI_EFA_FORK_SAFE
+                  value: "1"
+                - name: FI_EFA_USE_HUGE_PAGE
+                  value: "0"
+                - name: TORCH_NCCL_AVOID_RECORD_STREAMS
+                  value: "1"
+                - name: NCCL_NVLS_ENABLE
+                  value: "0"
+                # --- Memory ---
+                - name: PYTORCH_ALLOC_CONF
+                  value: "expandable_segments:True"
+                - name: CUDA_DEVICE_MAX_CONNECTIONS
+                  value: "1"
+                # --- Transformer Engine ---
+                - name: NVTE_DP_AMAX_REDUCE_INTERVAL
+                  value: "0"
+                - name: NVTE_ASYNC_AMAX_REDUCTION
+                  value: "1"
+                - name: NVTE_FUSED_ATTN
+                  value: "0"
+                # --- HuggingFace ---
+                - name: HF_HOME
+                  value: "/scratch/nemotron3-super/cache/huggingface"
+                - name: HF_TOKEN
+                  value: "${HF_TOKEN}"  # Set via: kubectl set env ... or replace before applying
+                # --- NeMo RL ---
+                - name: NRL_IGNORE_VERSION_MISMATCH
+                  value: "1"
+                - name: NRL_VLLM_USE_V1
+                  value: "1"
+                - name: VLLM_ATTENTION_BACKEND
+                  value: "FLASH_ATTN"
+                # --- Ray ---
+                - name: RAY_USAGE_STATS_ENABLED
+                  value: "0"
+                - name: RAY_DEDUP_LOGS
+                  value: "1"
+                - name: RAY_ENABLE_UV_RUN_RUNTIME_ENV
+                  value: "0"
+              volumeMounts:
+                - name: shmem
+                  mountPath: /dev/shm
+                - name: fsx-scratch
+                  mountPath: /scratch
+          volumes:
+            - name: shmem
+              emptyDir:
+                medium: Memory
+                sizeLimit: 200Gi
+            - name: fsx-scratch
+              persistentVolumeClaim:
+                claimName: fsx-scratch-pvc

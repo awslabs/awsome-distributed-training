@@ -1,0 +1,49 @@
+# FSx Lustre SCRATCH_2 PV + PVC for nchkumar namespace
+#
+# Uses the 1.2TB SCRATCH_2 filesystem (fs-086e03d6c3a294b73) in Jakarta
+# On subnet-0cde9d0301067c32d (same as p5en nodes)
+# Mount name: ri5y7bmv
+#
+# Note: This filesystem also has a PV bound to mvincig/fsx-claim,
+# but no pods are running there. We create a separate PV with a
+# unique volumeHandle suffix to avoid conflicts.
+#
+# Apply:
+#   kubectl apply -f fsx-scratch-storage.yaml
+#
+# To switch manifests between main FS and scratch:
+#   Main FS (4.8TB, full):  claimName: fsx-pvc
+#   Scratch (1.2TB):        claimName: fsx-scratch-pvc
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: fsx-scratch-pv-nchkumar
+spec:
+  capacity:
+    storage: 1200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: fsx.csi.aws.com
+    volumeHandle: fs-086e03d6c3a294b73-nchkumar
+    volumeAttributes:
+      dnsname: fs-086e03d6c3a294b73.fsx.ap-southeast-3.amazonaws.com
+      mountname: ri5y7bmv
+  mountOptions:
+    - flock
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fsx-scratch-pvc
+  namespace: nchkumar
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1200Gi
+  volumeName: fsx-scratch-pv-nchkumar
+  storageClassName: ""

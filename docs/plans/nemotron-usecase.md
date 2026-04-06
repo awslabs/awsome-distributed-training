@@ -187,6 +187,59 @@ Two training modes: **LoRA SFT** and **GRPO/DAPO reinforcement learning**.
 | 2026-04-04 | Super EP=4 default | SGLang and vLLM reference configs from model card use EP=4 for 512 experts |
 | 2026-04-04 | Super K8s scripts created | lora_sft.py and grpo_training.py added for EKS deployment |
 | 2026-04-04 | Priority shift: Super first on p5en | p5en nodes available; Super is the higher-value target |
+| 2026-04-04 | LatentMoE + EP research completed | All EP backends handle LatentMoE transparently; 4x smaller all-to-all payloads; no special adaptation needed |
+
+---
+
+## LatentMoE + Expert Parallelism Analysis
+
+> Completed: 2026-04-04
+
+### Architecture
+
+LatentMoE wraps the routed expert path with shared linear projections:
+
+1. **Down-projection** (W_down): `d=4096 → ℓ=1024` — applied locally on each GPU BEFORE dispatch
+2. **Routing + dispatch all-to-all**: operates on latent tensors `[S, ℓ=1024]` (4x smaller)
+3. **Expert computation**: experts are `[m × ℓ]` and `[ℓ × m]` (4x smaller weights)
+4. **Combine all-to-all**: returns latent tensors `[S, ℓ=1024]` (4x smaller)
+5. **Up-projection** (W_up): `ℓ=1024 → d=4096` — applied locally on each GPU AFTER combine
+
+Router still operates on full hidden dim `d=4096`. Shared experts also operate in full `d`.
+
+### EP Backend Compatibility
+
+**All standard EP backends handle LatentMoE transparently** — the compression is orthogonal:
+
+| Backend | Status | Notes |
+|---------|--------|-------|
+| NCCL all-to-all | Works | Payloads are `[S, ℓ]` instead of `[S, d]` |
+| NCCL EP LL mode | Works | Per-token send/recv 4x smaller — major EFA advantage |
+| DeepEP (LL/HT) | Works | Same dispatch protocol, just smaller tensors |
+| Megatron EP | Works | Native `--moe-latent-size` parameter |
+
+Per-token dispatch payload: 22 × 1024 × 2B = **45 KB** (vs 180 KB for standard MoE with d=4096).
+
+### Framework Implementations
+
+- **vLLM**: `NemotronHMoE` with `fc1_latent_proj` as `routed_input_transform`. PR #32790 adds shared/routed CUDA stream overlap. `--enable-expert-parallel` confirmed working (TP=4).
+- **SGLang**: `--tp 4 --ep 4` confirmed in NVIDIA deployment guide.
+- **TRT-LLM**: `--tp_size 2 --ep_size 2` (2-GPU) or `--tp_size 8 --ep_size 8` (8-GPU).
+- **Megatron-LM/NeMo**: `--moe-latent-size` + `expert_model_parallel_size`.
+
+### 2x p5en EFA Implications
+
+- NCCL EP LL on EFA should work with ~4x less per-token communication vs Qwen3-235B
+- 512 experts with EP=4 → ~128 experts per GPU (within EP group)
+- W_down/W_up gradient all-reduce is additional training cost (small: 4096×1024 matrices)
+- **Risk: LOW** — no special EP backend adaptation needed
+
+### References
+
+- [LatentMoE paper (Elango et al., Jan 2026)](https://arxiv.org/abs/2601.18089)
+- [Multi-Head LatentMoE (Cui et al., Feb 2026)](https://arxiv.org/abs/2602.04870) — research extension, NOT used by Super
+- [NVIDIA Advanced Deployment Guide](https://docs.nvidia.com/nemotron/nightly/usage-cookbook/Nemotron-3-Super/AdvancedDeploymentGuide/README.html)
+- [vLLM PR #32790 — Shared/Routed Overlap for Latent MoE](https://github.com/vllm-project/vllm/pull/32790)
 
 ---
 
