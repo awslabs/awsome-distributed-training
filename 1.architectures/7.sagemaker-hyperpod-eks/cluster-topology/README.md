@@ -14,11 +14,13 @@ Visualizes the inter-node network topology of a SageMaker HyperPod EKS cluster u
 |--------|---------------|
 | P4 | `ml.p4d.24xlarge`, `ml.p4de.24xlarge` |
 | P5 | `ml.p5.48xlarge`, `ml.p5e.48xlarge`, `ml.p5en.48xlarge` |
-| P6 | `ml.p6e-gb200.36xlarge`, `ml.p6-b200.48xlarge` |
+| P6 | `ml.p6e-gb200.36xlarge`, `ml.p6-b200.48xlarge`, `ml.p6-b300.48xlarge` |
 | Trn1 | `ml.trn1.2xlarge`, `ml.trn1.32xlarge`, `ml.trn1n.32xlarge` |
 | Trn2 | `ml.trn2.48xlarge`, `ml.trn2u.48xlarge` |
 
 Nodes with unsupported instance types (e.g., `t3.medium`) are automatically skipped.
+
+> **Note:** The number of topology layers is detected dynamically. Most instance types have 3 layers, but `p6-b200` and `p6-b300` instances have 4. The script handles both automatically.
 
 ## Usage
 

@@ -5,7 +5,7 @@ SUPPORTED_TYPES=(
     "ml.p4d.24xlarge" "ml.p4de.24xlarge"
     "ml.p5.48xlarge" "ml.p5e.48xlarge" "ml.p5en.48xlarge" "ml.p6e-gb200.36xlarge"
     "ml.trn1.2xlarge" "ml.trn1.32xlarge" "ml.trn1n.32xlarge" "ml.trn2.48xlarge"
-    "ml.trn2u.48xlarge" "ml.p6-b200.48xlarge"
+    "ml.trn2u.48xlarge" "ml.p6-b200.48xlarge" "ml.p6-b300.48xlarge"
 )
 
 is_supported_instance() {
@@ -18,12 +18,10 @@ is_supported_instance() {
     return 1
 }
 
-# Fetch all node data in a single API call and filter to supported nodes
+# Fetch all node data in a single API call, filter to supported nodes,
+# and dynamically extract all topology.k8s.aws/network-node-layer-* labels
 fetch_supported_nodes_json() {
-    local all_nodes
-    all_nodes=$(kubectl get nodes -o json)
-
-    echo "$all_nodes" | jq -c '[
+    kubectl get nodes -o json | jq -c '[
         .items[] |
         select(
             .metadata.labels["node.kubernetes.io/instance-type"] as $it |
@@ -31,10 +29,12 @@ fetch_supported_nodes_json() {
         ) |
         {
             name: .metadata.name,
-            l1: .metadata.labels["topology.k8s.aws/network-node-layer-1"],
-            l2: .metadata.labels["topology.k8s.aws/network-node-layer-2"],
-            l3: .metadata.labels["topology.k8s.aws/network-node-layer-3"],
-            instance_type: .metadata.labels["node.kubernetes.io/instance-type"]
+            instance_type: .metadata.labels["node.kubernetes.io/instance-type"],
+            layers: [
+                .metadata.labels | to_entries[] |
+                select(.key | startswith("topology.k8s.aws/network-node-layer-")) |
+                { num: (.key | ltrimstr("topology.k8s.aws/network-node-layer-") | tonumber), val: .value }
+            ] | sort_by(.num)
         }
     ]'
 }
@@ -56,42 +56,39 @@ if [ "$supported_count" -eq 0 ]; then
 fi
 echo "Found $supported_count supported node(s)."
 
-echo "Building topology..."
+# Detect max layer count from the data
+max_layer=$(echo "$NODES_JSON" | jq '[.[].layers[].num] | max')
+echo "Detected $max_layer topology layer(s)."
 
-# Extract unique layer values and build diagram from local JSON — no extra API calls
-layer1=($(echo "$NODES_JSON" | jq -r '.[].l1 // empty' | sort -u))
-layer2=($(echo "$NODES_JSON" | jq -r '.[].l2 // empty' | sort -u))
-layer3=($(echo "$NODES_JSON" | jq -r '.[].l3 // empty' | sort -u))
+echo "Building topology..."
 
 mermaid="flowchart TD"
 mermaid+=$'\n    A["Cluster Topology"]'
 
-for l1 in "${layer1[@]}"; do
-    l1_id=$(echo "$l1" | sed 's/[^a-zA-Z0-9]/_/g')
-    mermaid+=$'\n    A --> L1_'"${l1_id}[\"Layer 1: ${l1}\"]"
+for layer_num in $(seq 1 "$max_layer"); do
+    unique_values=($(echo "$NODES_JSON" | jq -r --argjson n "$layer_num" '[.[].layers[] | select(.num == $n) | .val] | unique | .[]'))
+
+    for val in "${unique_values[@]}"; do
+        val_id=$(echo "$val" | sed 's/[^a-zA-Z0-9]/_/g')
+
+        if [ "$layer_num" -eq 1 ]; then
+            mermaid+=$'\n    A --> L1_'"${val_id}[\"Layer 1: ${val}\"]"
+        else
+            parent_layer=$((layer_num - 1))
+            parent=""
+            parent=$(echo "$NODES_JSON" | jq -r --argjson n "$layer_num" --argjson pn "$parent_layer" --arg v "$val" \
+                '[.[] | select(.layers[] | select(.num == $n and .val == $v)) | .layers[] | select(.num == $pn) | .val][0] // empty')
+            parent_id=$(echo "$parent" | sed 's/[^a-zA-Z0-9]/_/g')
+            mermaid+=$'\n    L'"${parent_layer}_${parent_id} --> L${layer_num}_${val_id}[\"Layer ${layer_num}: ${val}\"]"
+        fi
+    done
 done
 
-for l2 in "${layer2[@]}"; do
-    l2_id=$(echo "$l2" | sed 's/[^a-zA-Z0-9]/_/g')
-    parent=""
-    parent=$(echo "$NODES_JSON" | jq -r --arg l2 "$l2" '[.[] | select(.l2 == $l2)][0].l1 // empty')
-    parent_id=$(echo "$parent" | sed 's/[^a-zA-Z0-9]/_/g')
-    mermaid+=$'\n    L1_'"${parent_id} --> L2_${l2_id}[\"Layer 2: ${l2}\"]"
-done
-
-for l3 in "${layer3[@]}"; do
-    l3_id=$(echo "$l3" | sed 's/[^a-zA-Z0-9]/_/g')
-    parent=""
-    parent=$(echo "$NODES_JSON" | jq -r --arg l3 "$l3" '[.[] | select(.l3 == $l3)][0].l2 // empty')
-    parent_id=$(echo "$parent" | sed 's/[^a-zA-Z0-9]/_/g')
-    mermaid+=$'\n    L2_'"${parent_id} --> L3_${l3_id}[\"Layer 3: ${l3}\"]"
-done
-
-echo "$NODES_JSON" | jq -r '.[] | "\(.name) \(.l3)"' | while read -r node l3_parent; do
+# Link nodes to their deepest layer
+echo "$NODES_JSON" | jq -r --argjson n "$max_layer" '.[] | "\(.name) \(.layers[] | select(.num == $n) | .val)"' | while read -r node deepest_parent; do
     node_id=$(echo "$node" | sed 's/[^a-zA-Z0-9]/_/g')
-    l3_parent_id=$(echo "$l3_parent" | sed 's/[^a-zA-Z0-9]/_/g')
-    mermaid_line="    L3_${l3_parent_id} --> N_${node_id}[\"${node}\"]"
-    echo "$mermaid_line"
+    parent_id=$(echo "$deepest_parent" | sed 's/[^a-zA-Z0-9]/_/g')
+    echo "    L${max_layer}_${parent_id} --> N_${node_id}[\"${node}\"]"
 done | {
     while IFS= read -r line; do
         mermaid+=$'\n'"$line"
@@ -99,7 +96,6 @@ done | {
 
     echo "$mermaid"
 
-    # Generate HTML visualization
     OUTPUT_FILE="topology.html"
     cat > "$OUTPUT_FILE" <<EOF
 <!DOCTYPE html>
