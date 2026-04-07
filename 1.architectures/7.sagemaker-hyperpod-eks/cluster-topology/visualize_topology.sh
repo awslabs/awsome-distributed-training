@@ -104,7 +104,7 @@ done | {
   <pre class="mermaid">
 ${mermaid}
   </pre>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.min.js"></script>
   <script>mermaid.initialize({startOnLoad:true});</script>
 </body></html>
 EOF
