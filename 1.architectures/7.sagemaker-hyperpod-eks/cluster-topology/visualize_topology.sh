@@ -6,7 +6,6 @@ SUPPORTED_TYPES=(
     "ml.p5.48xlarge" "ml.p5e.48xlarge" "ml.p5en.48xlarge" "ml.p6e-gb200.36xlarge"
     "ml.trn1.2xlarge" "ml.trn1.32xlarge" "ml.trn1n.32xlarge" "ml.trn2.48xlarge"
     "ml.trn2u.48xlarge" "ml.p6-b200.48xlarge"
-    "trn1.2xlarge"
 )
 
 is_supported_instance() {
