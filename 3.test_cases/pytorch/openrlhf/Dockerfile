@@ -17,7 +17,7 @@ FROM nvcr.io/nvidia/pytorch:25.02-py3
 # ---------------------------------------------------------------------------
 # System dependencies + EFA
 # ---------------------------------------------------------------------------
-ARG EFA_VERSION=1.43.3
+ARG EFA_VERSION=1.47.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git wget curl ninja-build autoconf build-essential \
