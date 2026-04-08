@@ -1,15 +1,58 @@
 # Nemotron 3 Super — RLVR Smoke Test Config for 2x p5en.48xlarge (16x H200)
 #
+# STATUS: CONFIRMED NOT FEASIBLE ON 2 NODES — see memory analysis below.
+#
 # Derived from the official super-v3 stage1_rlvr.yaml config:
 #   https://github.com/NVIDIA-NeMo/RL/blob/super-v3/examples/configs/super/stage1_rlvr.yaml
 #
+# ============================================================================
+# MEMORY ANALYSIS (DEFINITIVE): 120B Super GRPO CANNOT fit on 2 nodes (16 GPUs)
+# ============================================================================
+#
+# The "120B active" model is actually 346.57B TOTAL parameters:
+#   - 512 routed experts (NOT 24!), top-22 activation per token
+#   - Expert params = 338B (97.6% of total model weight)
+#   - 88 layers: 40 Mamba, 40 MoE-Transformer, 8 Attention
+#   - Latent MoE: hidden=4096 -> latent=1024 -> expert_intermediate=2688
+#
+# BEST CONFIG FOUND: TP=2/EP=8/DP=1 → 18.27B params/GPU
+#   - Model LOADS successfully (confirmed in attempts 11-13)
+#   - But OOMs during optimizer init, regardless of FP8/BF16
+#
+# ROOT CAUSE: Float16OptimizerWithFloat16Params.__init__ does:
+#     main_param = param.detach().clone().float()
+#   This creates FP32 master copies ON GPU before CPU offload.
+#   Measured GPU state at OOM: 122.50 GiB PyTorch allocated
+#     (FP32 model ~68 GiB + BF16 grads ~34 GiB + TE/NCCL overhead ~17 GiB + vLLM ~3 GiB)
+#   Optimizer needs +68 GiB FP32 master → 190 GiB >>> 140 GiB H200
+#
+# With FP8 params: same OOM (136.94 GiB used, FP8→FP32 dequantize transient)
+# With BF16 params: same OOM (136.95 GiB used, BF16→FP32 clone transient)
+# optimizer_cpu_offload: only helps AFTER init; transient peak is unavoidable
+#
+# 13 ATTEMPTS TRIED:
+#   TP=2/EP=4/DP=2: 120 GiB model → OOM
+#   TP=8/EP=1/DP=2: 107 GiB model → OOM
+#   TP=4/EP=2/DP=2: 107 GiB model → OOM
+#   TP=4/EP=4/FP8:  86+51 GiB → OOM
+#   TP=2/EP=8 + dist_optim: NoneType param bug (DP=1)
+#   TP=2/EP=8 + FP8 + no_dist_optim: 136.94 GiB → OOM at optimizer
+#   TP=2/EP=8 + BF16 + no_dist_optim: 136.95 GiB → OOM at optimizer
+#
+# MINIMUM VIABLE HARDWARE:
+#   TP=2 EP=16 → 32 GPUs (4 nodes p5en.48xlarge) → ~9.1B params/GPU
+#   Or use Nemotron 3 Nano 8B for 2-node GRPO smoke tests
+# ============================================================================
+#
 # Key changes from the full 109-node config:
 #   - cluster.num_nodes: 109 -> 2
-#   - megatron TP=4->2, EP=8->4, CP=8->1 (fits 16 GPUs: 2 TP * 4 EP * 1 CP * 2 DP = 16)
-#   - vLLM gen TP=4->2 (colocated with training)
+#   - megatron TP=4, EP=4, CP=1 (fits 16 GPUs with DP=1)
+#   - vLLM gen TP=8 (colocated with training)
 #   - GBS: 4096->16, num_prompts_per_step: 256->16
 #   - max_total_sequence_length: 65536->4096 (memory constrained)
 #   - max_num_steps: 1000000->20 (smoke test)
+#   - FP8 DISABLED: fp8_param causes OOM during optimizer FP32 master copy init
+#   - Optimizer CPU offload enabled (FP32 states go to CPU RAM)
 #   - Disabled NeMo Gym (uses simple math reward for smoke test)
 #   - Disabled wandb, async GRPO
 #
@@ -77,7 +120,7 @@ loss_fn:
   truncated_importance_sampling_type: tis
   sequence_level_importance_ratios: false
   token_level_loss: true
-  force_on_policy_ratio: true
+  force_on_policy_ratio: false
   use_kl_in_reward: false
 
 policy:
@@ -101,13 +144,15 @@ policy:
 
   megatron_cfg:
     enabled: true
-    empty_unused_memory_level: 1
+    empty_unused_memory_level: 2
     activation_checkpointing: true
     # 2 nodes x 8 GPUs = 16 total
-    # TP=2 x EP=4 x CP=1 x DP=2 = 16
+    # TP=2 x EP=8 x CP=1 x DP=1 = 16
+    # This config gives ~18.1B params/GPU → ~111 GiB total (should fit 140 GiB H200)
+    # DP=1 means no gradient averaging (ok for smoke test).
     tensor_model_parallel_size: 2
     expert_tensor_parallel_size: 1
-    expert_model_parallel_size: 4
+    expert_model_parallel_size: 8
     pipeline_model_parallel_size: 1
     num_layers_in_first_pipeline_stage: null
     num_layers_in_last_pipeline_stage: null
@@ -141,19 +186,22 @@ policy:
       weight_decay: 0.0
       bf16: true
       fp16: false
-      params_dtype: "float32"
+      params_dtype: "bfloat16"
 
       adam_beta1: 0.9
       adam_beta2: 0.999
       adam_eps: 1e-8
 
-      use_distributed_optimizer: true
-      use_precision_aware_optimizer: true
+      # DP=1 means dist_optim is meaningless (no DP peers to shard across).
+      # dist_optim+cpu_offload+DP=1 causes NoneType param bug in HybridDeviceOptimizer.
+      # precision_aware_optimizer requires dist_optim, so also disabled.
+      use_distributed_optimizer: false
+      use_precision_aware_optimizer: false
 
       clip_grad: ${policy.max_grad_norm}
 
-      optimizer_cpu_offload: false
-      optimizer_offload_fraction: 0.0
+      optimizer_cpu_offload: true
+      optimizer_offload_fraction: 1.0
 
     scheduler:
       start_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
@@ -172,12 +220,19 @@ policy:
       data_parallel_sharding_strategy: "optim_grads_params"
 
     fp8_cfg:
+      # FP8 disabled: fp8_param=true causes OOM during optimizer init because
+      # Float16OptimizerWithFloat16Params.__init__ does param.float() which
+      # dequantizes FP8→FP32 on GPU before CPU offload, causing a 136 GiB transient peak.
+      # With BF16 params + cpu_offload: peak = 34 GiB (BF16) + 68 GiB (FP32 transient) + 3 GiB (vLLM) = ~105 GiB < 140 GiB.
       enabled: false
       fp8: "e4m3"
       fp8_recipe: "blockwise"
       fp8_param: false
 
-    env_vars: null
+    env_vars:
+      NCCL_TIMEOUT: "1800"
+      TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: "1800"
+      TORCH_DISTRIBUTED_TIMEOUT_SEC: "1800"
 
   dynamic_batching:
     enabled: False
@@ -209,10 +264,10 @@ policy:
       async_engine: true
       precision: ${policy.precision}
       kv_cache_dtype: "auto"
-      tensor_parallel_size: 2
+      tensor_parallel_size: 8
       pipeline_parallel_size: 1
       expert_parallel_size: 1
-      gpu_memory_utilization: 0.8
+      gpu_memory_utilization: 0.22
       max_model_len: ${policy.max_total_sequence_length}
       enforce_eager: False
       use_deep_gemm: False
@@ -226,7 +281,7 @@ policy:
       compilation_config:
         cudagraph_capture_sizes: [1,2,4,8,16,32,64]
     colocated:
-      enabled: false
+      enabled: true
 
 # Simple math reward for smoke test (no NeMo Gym dependency)
 data:
@@ -238,21 +293,18 @@ data:
   validation:
     data_path: "/scratch/nemotron3-super/data/val.jsonl"
   default:
-    dataset_name: NemoGymDataset
-    env_name: "nemo_gym"
+    dataset_name: ResponseDataset
+    input_key: "problem"
+    output_key: "expected_answer"
     prompt_file: null
     system_prompt_file: null
-    processor: "nemo_gym_data_processor"
+    processor: "math_data_processor"
+    env_name: "math"
 
 env:
-  should_use_nemo_gym: true
-  nemo_gym:
-    skip_venv_if_present: true
-    num_gpu_nodes: 0
-    port_range_low: 15001
-    port_range_high: 20000
-    config_paths:
-    - resources_servers/ns_tools/configs/ns_tools.yaml
+  math:
+    num_workers: 4
+    math_verify_impl: "hf_math_verify"
 
 logger:
   log_dir: "/scratch/nemotron3-super/results/grpo-smoke-test/logs"
@@ -260,7 +312,18 @@ logger:
   wandb_enabled: false
   tensorboard_enabled: false
   mlflow_enabled: false
+  swanlab_enabled: false
   monitor_gpus: true
+  wandb:
+    project: "nemotron-grpo-smoke"
+    name: "grpo-smoke-test"
+  swanlab:
+    project: "nemotron-grpo-smoke"
+    name: "grpo-smoke-test"
+  tensorboard: {}
+  mlflow:
+    experiment_name: "nemotron-grpo-smoke"
+    run_name: "grpo-smoke-test"
   gpu_monitoring:
     collection_interval: 10
     flush_interval: 10

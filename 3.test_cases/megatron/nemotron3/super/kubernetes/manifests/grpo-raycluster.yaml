@@ -40,18 +40,27 @@ spec:
   headGroupSpec:
     rayStartParams:
       dashboard-host: "0.0.0.0"
-      num-cpus: "0"   # Head is for scheduling only
+      num-cpus: "2"   # Head needs CPU for venv setup STRICT_SPREAD placement
+      num-gpus: "0"   # Head should not claim any GPUs
     template:
       metadata:
         labels:
           app: nemotron3-super-grpo
           component: head
       spec:
-        # Head runs on any available node (no GPU needed)
+        # Head runs on a non-GPU m5 node (no GPU needed, avoid p5en nodes)
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node.kubernetes.io/instance-type
+                      operator: In
+                      values:
+                        - m5.8xlarge
         containers:
           - name: ray-head
-            # UPDATE: Replace with Jakarta ECR URI after image push
-            image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa
+            image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa-v2
             imagePullPolicy: Always
             ports:
               - containerPort: 6379   # GCS
@@ -64,11 +73,11 @@ spec:
                 name: metrics
             resources:
               requests:
-                cpu: "2"
-                memory: "16Gi"
-              limits:
                 cpu: "4"
-                memory: "32Gi"
+                memory: "64Gi"
+              limits:
+                cpu: "8"
+                memory: "120Gi"
             env:
               - name: RAY_USAGE_STATS_ENABLED
                 value: "0"
@@ -125,8 +134,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: ray-worker
-              # UPDATE: Replace with Jakarta ECR URI after image push
-              image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa
+              image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa-v2
               imagePullPolicy: Always
               lifecycle:
                 preStop:

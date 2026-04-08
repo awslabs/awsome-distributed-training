@@ -17,7 +17,7 @@
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-nchkumar}"
-HEAD_POD="raycluster-nemotron-grpo-head-0"
+HEAD_POD="raycluster-nemotron-grpo-head-m82lt"
 CONFIG_PATH="/scratch/nemotron3-super/configs/grpo-smoke-test.yaml"
 MODEL_PATH="/scratch/nemotron3-super/models/nemotron3-super-hf"
 RESULTS_DIR="/scratch/nemotron3-super/results/grpo-smoke-test"
@@ -53,7 +53,7 @@ kubectl exec -n "${NAMESPACE}" "${HEAD_POD}" -- ls "${MODEL_PATH}/config.json" 2
 if [[ "${DRY_RUN}" == "--dry-run" ]]; then
     echo "[DRY RUN] Would submit:"
     echo "  ray job submit --no-wait -- \\"
-    echo "    python examples/nemo_gym/run_grpo_nemo_gym.py \\"
+    echo "    python examples/run_grpo.py \\"
     echo "    --config ${CONFIG_PATH} \\"
     echo "    policy.model_name=${MODEL_PATH} \\"
     echo "    checkpointing.checkpoint_dir=${RESULTS_DIR}/checkpoints \\"
@@ -70,7 +70,7 @@ kubectl exec -n "${NAMESPACE}" "${HEAD_POD}" -- \
         NRL_IGNORE_VERSION_MISMATCH=1 \
         NRL_VLLM_USE_V1=1 \
         VLLM_ATTENTION_BACKEND=FLASH_ATTN \
-        python examples/nemo_gym/run_grpo_nemo_gym.py \
+        python examples/run_grpo.py \
             --config ${CONFIG_PATH} \
             policy.model_name=${MODEL_PATH} \
             checkpointing.checkpoint_dir=${RESULTS_DIR}/checkpoints \
