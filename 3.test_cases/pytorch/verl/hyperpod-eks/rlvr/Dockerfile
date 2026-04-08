@@ -1,11 +1,12 @@
 # Dockerfile for VERL with EFA support
 # Using verlai/verl base image (torch 2.8+, vLLM 0.11+) and adding EFA capabilities
+# Note: vllm011.latest is a fixed, versioned tag published by verlai — not a rolling tag.
 ARG TAG=vllm011.latest
 FROM verlai/verl:${TAG}
 ARG MEGATRON_LM_VERSION=core_v0.13.1
 # EFA configuration
 ARG OPEN_MPI_PATH=/opt/amazon/openmpi/
-ENV EFA_VERSION=1.43.3
+ENV EFA_VERSION=1.47.0
 
 # Install system dependencies including EFA requirements
 RUN apt-get update && apt-get install -y \
