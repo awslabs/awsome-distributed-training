@@ -71,7 +71,7 @@ ENV PMIX_MCA_gds=hash
 # ---------------------------------------------------------------------------
 # NCCL tests (optional — useful for cluster validation)
 # ---------------------------------------------------------------------------
-RUN git clone https://github.com/NVIDIA/nccl-tests.git /opt/nccl-tests \
+RUN git clone --branch v2.13.11 --depth 1 https://github.com/NVIDIA/nccl-tests.git /opt/nccl-tests \
     && cd /opt/nccl-tests \
     && make -j $(nproc) MPI=1 MPI_HOME=/opt/amazon/openmpi CUDA_HOME=/usr/local/cuda NCCL_HOME=/opt/nccl/build
 
