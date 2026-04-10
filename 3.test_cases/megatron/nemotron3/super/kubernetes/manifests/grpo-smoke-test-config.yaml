@@ -1,62 +1,29 @@
-# Nemotron 3 Super — RLVR Smoke Test Config for 2x p5en.48xlarge (16x H200)
+# Nemotron 3 Super — RLVR Smoke Test Config for 6x p5en.48xlarge (48x H200)
 #
-# STATUS: CONFIRMED NOT FEASIBLE ON 2 NODES — see memory analysis below.
+# STATUS: ATTEMPT 24 — NON-COLOCATED: 4 training + 2 inference nodes
 #
 # Derived from the official super-v3 stage1_rlvr.yaml config:
 #   https://github.com/NVIDIA-NeMo/RL/blob/super-v3/examples/configs/super/stage1_rlvr.yaml
 #
 # ============================================================================
-# MEMORY ANALYSIS (DEFINITIVE): 120B Super GRPO CANNOT fit on 2 nodes (16 GPUs)
+# NON-COLOCATED ARCHITECTURE — THE SOLUTION
 # ============================================================================
 #
-# The "120B active" model is actually 346.57B TOTAL parameters:
-#   - 512 routed experts (NOT 24!), top-22 activation per token
-#   - Expert params = 338B (97.6% of total model weight)
-#   - 88 layers: 40 Mamba, 40 MoE-Transformer, 8 Attention
-#   - Latent MoE: hidden=4096 -> latent=1024 -> expert_intermediate=2688
+# After 23 failed attempts (13 on 2 nodes, 10 on 4 nodes colocated), confirmed:
+#   - Colocated vLLM+training OOMs at optimizer.step() (136.63/139.8 GiB)
+#   - expandable_segments incompatible with vLLM's CuMem allocator in colocated mode
+#   - NVIDIA's own minimum: 5x GB200 (189 GiB) or 3x B200 (183 GiB) NON-COLOCATED
 #
-# BEST CONFIG FOUND: TP=2/EP=8/DP=1 → 18.27B params/GPU
-#   - Model LOADS successfully (confirmed in attempts 11-13)
-#   - But OOMs during optimizer init, regardless of FP8/BF16
+# Non-colocated splits GPU nodes into:
+#   TRAINING (4 nodes, 32 GPUs): Megatron only, expandable_segments safe
+#     TP=2, EP=16, DP=1 → 32 GPUs
+#     ~9.1B params/GPU, peak ~88 GiB + expandable_segments eliminates fragmentation
+#   INFERENCE (2 nodes, 16 GPUs): vLLM only, high gpu_memory_utilization
+#     TP=8 per node, gpu_memory_utilization=0.80
+#     No training overhead, dedicated to rollout generation
 #
-# ROOT CAUSE: Float16OptimizerWithFloat16Params.__init__ does:
-#     main_param = param.detach().clone().float()
-#   This creates FP32 master copies ON GPU before CPU offload.
-#   Measured GPU state at OOM: 122.50 GiB PyTorch allocated
-#     (FP32 model ~68 GiB + BF16 grads ~34 GiB + TE/NCCL overhead ~17 GiB + vLLM ~3 GiB)
-#   Optimizer needs +68 GiB FP32 master → 190 GiB >>> 140 GiB H200
-#
-# With FP8 params: same OOM (136.94 GiB used, FP8→FP32 dequantize transient)
-# With BF16 params: same OOM (136.95 GiB used, BF16→FP32 clone transient)
-# optimizer_cpu_offload: only helps AFTER init; transient peak is unavoidable
-#
-# 13 ATTEMPTS TRIED:
-#   TP=2/EP=4/DP=2: 120 GiB model → OOM
-#   TP=8/EP=1/DP=2: 107 GiB model → OOM
-#   TP=4/EP=2/DP=2: 107 GiB model → OOM
-#   TP=4/EP=4/FP8:  86+51 GiB → OOM
-#   TP=2/EP=8 + dist_optim: NoneType param bug (DP=1)
-#   TP=2/EP=8 + FP8 + no_dist_optim: 136.94 GiB → OOM at optimizer
-#   TP=2/EP=8 + BF16 + no_dist_optim: 136.95 GiB → OOM at optimizer
-#
-# MINIMUM VIABLE HARDWARE:
-#   TP=2 EP=16 → 32 GPUs (4 nodes p5en.48xlarge) → ~9.1B params/GPU
-#   Or use Nemotron 3 Nano 8B for 2-node GRPO smoke tests
+# Weight sync: NCCL between training→inference clusters (handled by NeMo RL)
 # ============================================================================
-#
-# Key changes from the full 109-node config:
-#   - cluster.num_nodes: 109 -> 2
-#   - megatron TP=4, EP=4, CP=1 (fits 16 GPUs with DP=1)
-#   - vLLM gen TP=8 (colocated with training)
-#   - GBS: 4096->16, num_prompts_per_step: 256->16
-#   - max_total_sequence_length: 65536->4096 (memory constrained)
-#   - max_num_steps: 1000000->20 (smoke test)
-#   - FP8 DISABLED: fp8_param causes OOM during optimizer FP32 master copy init
-#   - Optimizer CPU offload enabled (FP32 states go to CPU RAM)
-#   - Disabled NeMo Gym (uses simple math reward for smoke test)
-#   - Disabled wandb, async GRPO
-#
-# This config is for VALIDATION ONLY — not production training.
 
 checkpointing:
   enabled: true
@@ -65,12 +32,13 @@ checkpointing:
   higher_is_better: true
   keep_top_k: 3
   save_period: 10
+  checkpoint_must_save_by: null
   model_save_format: "safetensors"
   save_consolidated: false
 
 grpo:
   num_prompts_per_step: 16
-  num_generations_per_prompt: 4
+  num_generations_per_prompt: 2
   num_val_generations_per_prompt: 2
   max_rollout_turns: 1
   max_num_epochs: 1
@@ -131,11 +99,11 @@ policy:
   hf_config_overrides: {}
   train_global_batch_size: 16
   train_micro_batch_size: 1
-  generation_batch_size: 8
+  generation_batch_size: 4
   logprob_batch_size: 1
   max_total_sequence_length: 4096
   precision: "bfloat16"
-  logprob_chunk_size: 2048
+  logprob_chunk_size: 1024
   offload_optimizer_for_logprob: false
 
   dtensor_cfg:
@@ -146,13 +114,13 @@ policy:
     enabled: true
     empty_unused_memory_level: 2
     activation_checkpointing: true
-    # 2 nodes x 8 GPUs = 16 total
-    # TP=2 x EP=8 x CP=1 x DP=1 = 16
-    # This config gives ~18.1B params/GPU → ~111 GiB total (should fit 140 GiB H200)
-    # DP=1 means no gradient averaging (ok for smoke test).
+    # Training nodes: 4 (32 GPUs) — non-colocated, no vLLM interference
+    # TP=2 x EP=16 x CP=1 x PP=1 = 32 → DP=1
+    # expandable_segments safe on training-only GPUs → no fragmentation OOM
+    # ~9.1B params/GPU → peak ~88 GiB during optimizer init << 140 GiB H200
     tensor_model_parallel_size: 2
     expert_tensor_parallel_size: 1
-    expert_model_parallel_size: 8
+    expert_model_parallel_size: 16
     pipeline_model_parallel_size: 1
     num_layers_in_first_pipeline_stage: null
     num_layers_in_last_pipeline_stage: null
@@ -209,7 +177,7 @@ policy:
       weight_decay_incr_style: "constant"
       lr_decay_style: "constant"
       lr_decay_iters: null
-      lr_warmup_iters: 5
+      lr_warmup_iters: 0
       lr_warmup_init: 3e-7
 
     distributed_data_parallel_config:
@@ -233,6 +201,7 @@ policy:
       NCCL_TIMEOUT: "1800"
       TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: "1800"
       TORCH_DISTRIBUTED_TIMEOUT_SEC: "1800"
+      PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
 
   dynamic_batching:
     enabled: False
@@ -267,7 +236,7 @@ policy:
       tensor_parallel_size: 8
       pipeline_parallel_size: 1
       expert_parallel_size: 1
-      gpu_memory_utilization: 0.22
+      gpu_memory_utilization: 0.80
       max_model_len: ${policy.max_total_sequence_length}
       enforce_eager: False
       use_deep_gemm: False
@@ -281,11 +250,14 @@ policy:
       compilation_config:
         cudagraph_capture_sizes: [1,2,4,8,16,32,64]
     colocated:
-      enabled: true
+      enabled: false
+      resources:
+        gpus_per_node: 8
+        num_nodes: 2
 
 # Simple math reward for smoke test (no NeMo Gym dependency)
 data:
-  max_input_seq_length: null
+  max_input_seq_length: 4096
   shuffle: false
   num_workers: 1
   train:
@@ -298,7 +270,7 @@ data:
     output_key: "expected_answer"
     prompt_file: null
     system_prompt_file: null
-    processor: "math_data_processor"
+    processor: "math_hf_data_processor"
     env_name: "math"
 
 env:
@@ -330,4 +302,4 @@ logger:
 
 cluster:
   gpus_per_node: 8
-  num_nodes: 2
+  num_nodes: 6

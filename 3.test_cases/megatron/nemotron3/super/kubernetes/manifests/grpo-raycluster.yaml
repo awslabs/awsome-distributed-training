@@ -1,24 +1,24 @@
-# Nemotron 3 Super — RayCluster for NeMo RL GRPO on 2x p5en.48xlarge (Jakarta)
+# Nemotron 3 Super — RayCluster for NeMo RL GRPO on 6x p5en.48xlarge (Jakarta)
 #
-# NeMo RL uses Ray for distributed orchestration of the GRPO pipeline:
-#   - Actor (policy training) workers: Megatron-based, use all GPUs
-#   - Rollout (generation) workers: vLLM-based, share GPUs with actor
-#   - Reward workers: NeMo Gym environments (CPU or GPU)
+# NON-COLOCATED architecture (attempt 24+):
+#   - 4 nodes (32 GPUs): Megatron training only (expandable_segments safe)
+#   - 2 nodes (16 GPUs): vLLM rollout only (dedicated, high gpu_memory_utilization)
+#   - NeMo RL handles node assignment via colocated.resources config
 #
 # The Ray head node is CPU-only (scheduling/coordination).
 # Worker nodes get 8 GPUs + 16 EFA devices each.
 #
-# Container: nemotron3-super-grpo:v0.5.0-efa from Jakarta ECR
-#   Based on nvcr.io/nvidia/nemo-rl:v0.5.0.nemotron_3_super + EFA
+# Container: nemotron3-super-grpo:v0.5.0-efa-v2 from Jakarta ECR
+#   Based on nvcr.io/nvidia/nemo-rl:v0.5.0.nemotron_3_super + EFA + pybind11 fix
 #
 # Apply:
 #   kubectl apply -f grpo-raycluster.yaml
 #
 # Submit job:
-#   kubectl exec -n nchkumar raycluster-nemotron-grpo-head-0 -- \
+#   kubectl exec -n nchkumar <head-pod> -- \
 #     ray job submit --no-wait -- \
-#     python examples/nemo_gym/run_grpo_nemo_gym.py \
-#       --config /fsx/nchkumar/nemotron3-super/configs/grpo-smoke-test.yaml
+#     python examples/run_grpo.py \
+#       --config /scratch/nemotron3-super/configs/grpo-smoke-test.yaml
 #
 # Dashboard:
 #   kubectl port-forward -n nchkumar svc/raycluster-nemotron-grpo-head-svc 8265:8265
@@ -99,9 +99,9 @@ spec:
 
   workerGroupSpecs:
     - groupName: gpu-workers
-      replicas: 2
-      minReplicas: 2
-      maxReplicas: 2
+      replicas: 6
+      minReplicas: 6
+      maxReplicas: 6
       rayStartParams:
         num-gpus: "8"
         resources: '"{\"accelerator_type_H200\": 1}"'
@@ -111,7 +111,7 @@ spec:
             app: nemotron3-super-grpo
             component: worker
         spec:
-          # Target the 2 free p5en nodes
+          # Target the 6 free p5en nodes (4 training + 2 inference, assigned by NeMo RL)
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
@@ -122,6 +122,10 @@ spec:
                         values:
                           - ip-10-240-69-134.ap-southeast-3.compute.internal
                           - ip-10-240-92-178.ap-southeast-3.compute.internal
+                          - ip-10-240-81-177.ap-southeast-3.compute.internal
+                          - ip-10-240-110-229.ap-southeast-3.compute.internal
+                          - ip-10-240-82-253.ap-southeast-3.compute.internal
+                          - ip-10-240-81-10.ap-southeast-3.compute.internal
             podAntiAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
                 - labelSelector:
@@ -170,8 +174,11 @@ spec:
                 - name: NCCL_NVLS_ENABLE
                   value: "0"
                 # --- Memory ---
-                - name: PYTORCH_ALLOC_CONF
-                  value: "expandable_segments:True"
+                # NOTE: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True is set via
+                # megatron_cfg.env_vars in the GRPO config, NOT here, because vLLM's
+                # CuMemAllocator asserts expandable_segments is not set. In non-colocated
+                # mode, training and inference workers share the same pod spec, so we
+                # cannot set it globally here.
                 - name: CUDA_DEVICE_MAX_CONNECTIONS
                   value: "1"
                 # --- Transformer Engine ---
