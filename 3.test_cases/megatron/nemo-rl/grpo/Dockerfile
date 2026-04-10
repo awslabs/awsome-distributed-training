@@ -207,7 +207,7 @@ EOF
 RUN python tools/generate_fingerprint.py > /opt/nemo_rl_container_fingerprint
 
 # SBOM generation (produces /THIRD-PARTY-LICENSES and /SBOM.txt)
-COPY docker/generate_sbom.sh /tmp/generate_sbom.sh
+COPY generate_sbom.sh /tmp/generate_sbom.sh
 RUN bash /tmp/generate_sbom.sh && rm /tmp/generate_sbom.sh
 
 
@@ -323,8 +323,5 @@ ENV NCCL_SOCKET_IFNAME="^lo,docker,veth,eni"
 # H200/NVSwitch NCCL workarounds (required for P5en, harmless on P5)
 ENV NCCL_CUMEM_ENABLE=0
 ENV NCCL_NVLS_ENABLE=0
-
-# License files
-COPY THIRD-PARTY-LICENSES UTILITY-LICENSES /opt/nemo-rl/
 
 WORKDIR /opt/nemo-rl
