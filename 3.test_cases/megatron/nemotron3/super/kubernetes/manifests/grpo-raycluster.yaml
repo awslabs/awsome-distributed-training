@@ -60,7 +60,7 @@ spec:
                         - m5.8xlarge
         containers:
           - name: ray-head
-            image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa-v2
+            image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa-v3
             imagePullPolicy: Always
             ports:
               - containerPort: 6379   # GCS
@@ -138,7 +138,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: ray-worker
-              image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa-v2
+              image: 159553542841.dkr.ecr.ap-southeast-3.amazonaws.com/nemotron-3-super:grpo-v0.5.0-efa-v3
               imagePullPolicy: Always
               lifecycle:
                 preStop:

@@ -121,7 +121,9 @@ RUN echo "hwloc_base_binding_policy = none" >> /opt/amazon/openmpi/etc/openmpi-m
 
 # Install additional AWS/monitoring dependencies
 # Note: NeMo Gym is already in the base container (v0.5.0.nemotron_3_super)
-RUN pip3 install --upgrade huggingface_hub>=0.34.0 && \
+# huggingface_hub pinned to 0.34.4: base image has 1.9.0 which breaks
+# Megatron Bridge HF->Megatron checkpoint conversion (API changes in 1.x)
+RUN pip3 install huggingface_hub==0.34.4 && \
     pip3 install awscli pynvml wandb
 
 RUN mv $OPEN_MPI_PATH/bin/mpirun $OPEN_MPI_PATH/bin/mpirun.real \
@@ -146,6 +148,16 @@ WORKDIR /opt/nemo-rl
 # This avoids a fatal sys.exit(1) at runtime if compilation fails
 RUN cd /opt/nemo-rl/3rdparty/Megatron-LM-workspace/Megatron-LM/megatron/core/datasets \
     && make 2>/dev/null || echo "WARNING: Megatron helpers compile skipped (path may differ)"
+
+# Patch HybridDeviceOptimizer: fix KeyError when cpu_offload + Float16Optimizer
+# replaces BF16 params with FP32 masters in param_groups (Memory #118).
+# Uses position-based group matching instead of param identity matching.
+COPY patch_hybrid_optimizer_v2.py /tmp/patch_hybrid_optimizer_v2.py
+RUN python /tmp/patch_hybrid_optimizer_v2.py \
+    && rm /tmp/patch_hybrid_optimizer_v2.py
+
+# Also patch huggingface_hub in the Ray vLLM venv (inference workers use this venv)
+RUN /opt/nemo_rl_venv/bin/pip install huggingface_hub==0.34.4 2>/dev/null || true
 
 # Verify installation
 RUN ls -la /opt/amazon/efa/lib/ && ls -la /opt/amazon/openmpi/lib/ \

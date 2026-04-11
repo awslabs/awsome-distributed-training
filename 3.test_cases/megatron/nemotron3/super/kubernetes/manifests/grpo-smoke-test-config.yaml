@@ -1,6 +1,7 @@
 # Nemotron 3 Super — RLVR Smoke Test Config for 6x p5en.48xlarge (48x H200)
 #
-# STATUS: ATTEMPT 24 — NON-COLOCATED: 4 training + 2 inference nodes
+# STATUS: VALIDATED — 2/2 steps, Loss converging, Rewards=1.0 (Attempt 34)
+# Architecture: NON-COLOCATED — 4 training + 2 inference nodes
 #
 # Derived from the official super-v3 stage1_rlvr.yaml config:
 #   https://github.com/NVIDIA-NeMo/RL/blob/super-v3/examples/configs/super/stage1_rlvr.yaml
@@ -131,9 +132,10 @@ policy:
     moe_router_dtype: "fp32"
     moe_router_load_balancing_type: "none"
     moe_router_bias_update_rate: 1.0e-3
-    moe_permute_fusion: true
+    moe_permute_fusion: false  # Disabled: TE Triton kernel incompatible with Triton 3.5.0 (get_int_dtype cache_key bug)
     moe_enable_deepep: false
     moe_token_dispatcher_type: "alltoall"
+    no_save_optim: true  # Weights-only checkpoint (~310G). Full checkpoint with optimizer is ~460G+, exceeds 1.1TB FSx.
     moe_aux_loss_coeff: 0.0
     moe_router_enable_expert_bias: true
     moe_shared_expert_overlap: false
