@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install EFA
-ARG EFA_INSTALLER_VERSION=latest
+ARG EFA_INSTALLER_VERSION=1.47.0
 RUN cd /tmp && \
     curl -sL https://efa-installer.amazonaws.com/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz | tar xz && \
     cd aws-efa-installer && \

@@ -1,3 +1,6 @@
+<!-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. -->
+<!-- SPDX-License-Identifier: MIT-0 -->
+
 # V-JEPA 2.1: Distributed Self-Supervised Video Pre-training
 
 This test case demonstrates distributed pre-training of [V-JEPA 2.1](https://github.com/facebookresearch/vjepa2) (Meta FAIR) on AWS GPU clusters. V-JEPA 2.1 improves upon V-JEPA 2 with Dense Predictive Loss, Deep Self-Supervision, and image+video co-training to learn high-quality, temporally consistent dense features.

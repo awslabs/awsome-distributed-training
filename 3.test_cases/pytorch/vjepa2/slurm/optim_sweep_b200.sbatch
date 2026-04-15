@@ -34,7 +34,7 @@
 #SBATCH --account=root
 #SBATCH --time=01:00:00
 
-set -ex
+set -euo pipefail
 
 PHASE="${PHASE:?ERROR: PHASE env var must be set (A, B, C, or D)}"
 

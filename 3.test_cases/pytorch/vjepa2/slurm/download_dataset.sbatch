@@ -24,7 +24,7 @@
 #SBATCH --cpus-per-task=48
 #SBATCH --partition=p5en
 
-set -ex
+set -euo pipefail
 
 VJEPA2_DIR=/fsx/${USER}/vjepa2
 DATASET_DIR=${VJEPA2_DIR}/datasets/ssv2

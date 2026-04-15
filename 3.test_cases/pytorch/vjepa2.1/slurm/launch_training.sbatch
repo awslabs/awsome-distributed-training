@@ -12,7 +12,7 @@
 #SBATCH --exclusive
 #SBATCH --partition=p5en
 
-set -ex
+set -euo pipefail
 
 ###########################
 ###### User Variables #####
@@ -40,7 +40,7 @@ export FI_PROVIDER=efa
 export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 # NCCL lib path (ParallelCluster p5en); adjust if using a different setup
 export LD_PRELOAD=/lib/x86_64-linux-gnu/libnccl.so.2
-export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
+export NCCL_SOCKET_IFNAME=^docker,lo,veth
 
 ###########################
 ## Container Args #########

@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
 # V-JEPA 2.1 ViT-g/16 FSDP Benchmark Config
 # Based on benchmark-vitg-8nodes.yaml with FSDP sharding and performance tuning.
 #

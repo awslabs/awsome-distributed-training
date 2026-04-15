@@ -44,7 +44,7 @@ parser.add_argument("--fname", type=str, required=True, help="Path to YAML confi
 if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.fname, "r") as f:
-        params = yaml.load(f, Loader=yaml.FullLoader)
+        params = yaml.load(f, Loader=yaml.SafeLoader)
 
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(params)

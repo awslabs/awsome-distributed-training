@@ -14,7 +14,7 @@
 # Usage (called from sbatch via srun):
 #   srun ... bash scripts/nsys_wrapper.sh python scripts/run_train.py --fname config.yaml
 
-set -e
+set -euo pipefail
 
 NSYS_BIN="${NSYS_BIN:-/usr/local/cuda/bin/nsys}"
 NSYS_OUTPUT="${NSYS_OUTPUT:-/tmp/nsys_profile_rank0}"

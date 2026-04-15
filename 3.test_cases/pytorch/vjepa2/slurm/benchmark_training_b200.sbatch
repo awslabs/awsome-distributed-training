@@ -41,7 +41,7 @@
 #SBATCH --account=root
 #SBATCH --time=01:00:00
 
-set -ex
+set -euo pipefail
 
 ###########################
 ###### User Variables #####

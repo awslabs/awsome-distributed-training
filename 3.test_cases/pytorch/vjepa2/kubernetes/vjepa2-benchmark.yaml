@@ -39,7 +39,7 @@ spec:
           containers:
             - name: vjepa2
               # Replace with your ECR image URI
-              image: <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/vjepa2:latest
+              image: <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/vjepa2:vjepa2
               imagePullPolicy: Always
               command:
                 - torchrun
@@ -58,7 +58,7 @@ spec:
                 - name: FI_EFA_SET_CUDA_SYNC_MEMOPS
                   value: "0"
                 - name: NCCL_SOCKET_IFNAME
-                  value: "^docker,lo,veth,eth"
+                  value: "^docker,lo,veth"
                 - name: PYTHONPATH
                   value: "/vjepa2"
               resources:

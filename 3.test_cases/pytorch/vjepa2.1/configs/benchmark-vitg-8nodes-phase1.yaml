@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
 # V-JEPA 2.1 ViT-g/16 Phase 1 Config (AC off, no compile)
 # Based on benchmark-vitg-8nodes-optimized.yaml without torch.compile.
 #

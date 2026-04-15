@@ -1,3 +1,6 @@
+<!-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. -->
+<!-- SPDX-License-Identifier: MIT-0 -->
+
 # V-JEPA 2: Distributed Self-Supervised Video Pre-training
 
 This test case demonstrates distributed pre-training of [V-JEPA 2](https://github.com/facebookresearch/vjepa2) (Meta FAIR) on AWS GPU clusters. V-JEPA 2 is a self-supervised approach to training video encoders using internet-scale video data, achieving state-of-the-art performance on motion understanding and human action anticipation tasks.

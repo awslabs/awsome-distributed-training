@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
 # V-JEPA 2 ViT-g/16 Benchmark Config
 # Adapted from facebookresearch/vjepa2 configs/train/vitg16/pretrain-256px-16f.yaml
 # Configured for 8-node (64 GPU) benchmark run on p5en.48xlarge (H200)
