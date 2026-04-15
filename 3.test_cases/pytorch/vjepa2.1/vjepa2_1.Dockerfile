@@ -25,15 +25,20 @@ RUN cd /tmp && \
 # Install NCCL OFI plugin for EFA
 RUN apt-get update && apt-get install -y libnccl-dev && rm -rf /var/lib/apt/lists/* || true
 
-# Install V-JEPA 2 / 2.1 dependencies
+# Install V-JEPA 2 / 2.1 dependencies (pinned to tested versions)
 RUN pip install --no-cache-dir \
-    tensorboard wandb iopath pyyaml \
-    opencv-python submitit braceexpand webdataset timm transformers \
-    peft decord pandas einops beartype psutil h5py fire python-box \
-    scikit-image ftfy eva-decord Pillow
+    tensorboard==2.20.0 wandb==0.25.0 iopath==0.1.10 pyyaml==6.0.3 \
+    opencv-python==4.11.0.86 submitit==1.5.4 braceexpand==0.1.7 \
+    webdataset==1.0.2 timm==1.0.24 transformers==5.1.0 \
+    peft==0.18.1 decord==0.6.0 pandas==3.0.0 einops==0.8.2 \
+    beartype==0.22.9 psutil==7.2.2 h5py==3.15.1 fire==0.7.1 \
+    python-box==7.3.2 scikit-image==0.26.0 ftfy==6.3.1 \
+    eva-decord==0.6.1 Pillow==12.0.0
 
-# Clone V-JEPA 2 (includes V-JEPA 2.1 code under app/vjepa_2_1/)
-RUN git clone https://github.com/facebookresearch/vjepa2.git /vjepa2
+# Clone V-JEPA 2 (includes V-JEPA 2.1 code under app/vjepa_2_1/; pinned to tested commit)
+ARG VJEPA2_COMMIT=204698b45b3712590f06245fbfba32d3be539812
+RUN git clone https://github.com/facebookresearch/vjepa2.git /vjepa2 && \
+    cd /vjepa2 && git checkout ${VJEPA2_COMMIT}
 WORKDIR /vjepa2
 RUN pip install -e .
 

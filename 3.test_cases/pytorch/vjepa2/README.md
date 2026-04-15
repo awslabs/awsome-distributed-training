@@ -27,7 +27,7 @@ We benchmark the **ViT-g/16 (1B parameters)** encoder variant using the **Someth
 ## 1. Clone this repository
 
 ```bash
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/3.test_cases/pytorch/vjepa2
 ```
 

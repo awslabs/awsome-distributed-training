@@ -40,7 +40,7 @@ See also the [V-JEPA 2 test case](../vjepa2/) for the baseline benchmark.
 ## 1. Clone this repository
 
 ```bash
-git clone https://github.com/aws-samples/awsome-distributed-training.git
+git clone https://github.com/awslabs/awsome-distributed-training.git
 cd awsome-distributed-training/3.test_cases/pytorch/vjepa2.1
 ```
 
