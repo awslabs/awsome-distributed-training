@@ -80,7 +80,7 @@ The dataset is expected at `/fsx/goldilocks/train.jsonl` and `/fsx/goldilocks/te
 1. See the sibling generator: `3.test_cases/megatron/nemo-rl/data-prep/generate_goldilocks_data_designer.py`
 2. Or use any math problem dataset with `prompt` and `answer` fields in JSONL format.
 
-The `rayjob-grpo.yaml` manifest mounts `/fsx/goldilocks/` — update the `goldilocksPath` env var in the manifest if your path differs.
+The `kubernetes/rayjob-grpo.yaml` manifest mounts `/fsx/goldilocks/` — update the `goldilocksPath` env var in the manifest if your path differs.
 
 ## Quick Start
 
@@ -96,8 +96,8 @@ docker buildx build --platform linux/amd64 \
 ### 2. Deploy training
 
 ```bash
-# Edit rayjob-grpo.yaml to set your image, namespace, and storage
-kubectl apply -f rayjob-grpo.yaml
+# Edit kubernetes/rayjob-grpo.yaml to set your image, namespace, and storage
+kubectl apply -f kubernetes/rayjob-grpo.yaml
 ```
 
 ### 3. Monitor training

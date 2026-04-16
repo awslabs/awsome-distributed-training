@@ -156,6 +156,9 @@ TORCH_CUDA_ARCH_LIST="9.0" uv sync --locked --extra vllm --no-install-project
 # Automodel — flash-attn and transformer-engine compile for target archs
 uv sync --locked --extra automodel --no-install-project
 
+# peft — needed by eval script for LoRA adapter merging
+uv pip install peft
+
 # Clean build caches (saves 4-6 GB)
 rm -rf /root/.cache/uv
 

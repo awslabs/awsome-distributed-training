@@ -25,7 +25,6 @@ import argparse
 import json
 import os
 import re
-import sys
 import time
 from pathlib import Path
 
@@ -243,12 +242,7 @@ def main():
                 json.dump(cfg, f, indent=2)
             print("  Fixed adapter prefix")
 
-    try:
-        from peft import PeftModel
-    except ImportError:
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "peft", "-q"])
-        from peft import PeftModel
+    from peft import PeftModel
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model, torch_dtype=torch.bfloat16, device_map="auto", trust_remote_code=True
