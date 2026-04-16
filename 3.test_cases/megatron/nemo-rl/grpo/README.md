@@ -1,3 +1,8 @@
+<!--
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+SPDX-License-Identifier: MIT-0
+-->
+
 # Multi-node GRPO Training with NVIDIA NeMo RL on Amazon EKS
 
 ## Overview
@@ -50,6 +55,32 @@ The architecture automatically adapts to the instance type:
 - [KubeRay operator](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started.html) installed
 - Shared storage (FSx Lustre or EFS) for checkpoints and model weights
 - For P5/P5en: EFA device plugin and VPC CNI with prefix delegation
+
+## Data Preparation
+
+This test case uses the Goldilocks math problems dataset for GRPO training. The dataset is a synthetic set of math word problems with deterministic answers, generated to be "just right" difficulty for a Nemotron-Mini-4B model — hard enough that the untrained model fails, but solvable with proper reasoning.
+
+### Dataset format
+
+Each example is a JSONL line:
+
+```json
+{
+  "prompt": "A farmer has 17 chickens...",
+  "answer": "42",
+  "difficulty": "medium",
+  "category": "arithmetic"
+}
+```
+
+### Generating the dataset
+
+The dataset is expected at `/fsx/goldilocks/train.jsonl` and `/fsx/goldilocks/test.jsonl` (mounted via FSx). To generate your own:
+
+1. See the sibling generator: `3.test_cases/megatron/nemo-rl/data-prep/generate_goldilocks_data_designer.py`
+2. Or use any math problem dataset with `prompt` and `answer` fields in JSONL format.
+
+The `rayjob-grpo.yaml` manifest mounts `/fsx/goldilocks/` — update the `goldilocksPath` env var in the manifest if your path differs.
 
 ## Quick Start
 

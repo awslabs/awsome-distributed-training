@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1.10
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
 # NeMo RL Training Image — Multi-Architecture Buildx Pattern
 #
 # Production-ready Dockerfile for NeMo RL GRPO training with:
@@ -293,6 +296,9 @@ else
 fi
 EOF
 
+# Clean stale aws-ofi-nccl from base image (we use the installer-provided NGC plugin)
+RUN rm -rf /opt/amazon/aws-ofi-nccl 2>/dev/null || true
+
 # Clean up build-only dependencies
 RUN apt-get purge -y --auto-remove autoconf automake libtool && \
     rm -rf /var/lib/apt/lists/*
@@ -314,6 +320,7 @@ EOF
 ENV LD_LIBRARY_PATH="/opt/amazon/ofi-nccl/lib:/opt/amazon/efa/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 # EFA / NCCL defaults
+ENV AWS_OFI_NCCL_VERSION=1.18.0
 ENV FI_PROVIDER=efa
 ENV FI_EFA_USE_DEVICE_RDMA=1
 ENV NCCL_NET_PLUGIN=ofi

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 """Before/after eval for Nemotron-Mini-4B on Goldilocks math problems.
 
 Evaluates base model and optionally the GRPO-trained LoRA checkpoint
