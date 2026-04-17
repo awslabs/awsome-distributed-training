@@ -230,6 +230,20 @@ find /opt/ray_venvs -type d \( -name 'tests' -o -name 'test' \) \
 rm -rf /root/.cache/uv
 EOF
 
+# CVE remediation: upgrade vulnerable packages across ALL venvs (main + Ray workers)
+RUN <<"EOF" bash -exu
+for venv in /opt/nemo_rl_venv /opt/ray_venvs/*/; do
+  if [ -f "$venv/bin/python" ]; then
+    uv pip install --python "$venv/bin/python" \
+        "mlflow>=3.8.1" \
+        "cryptography>=46.0.5" \
+        "pyasn1>=0.6.3" \
+        2>/dev/null || true
+  fi
+done
+rm -rf /root/.cache/uv
+EOF
+
 # Container fingerprint for cache invalidation
 RUN python tools/generate_fingerprint.py > /opt/nemo_rl_container_fingerprint
 
