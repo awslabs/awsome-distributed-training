@@ -215,7 +215,7 @@ add_keypair_to_cluster() {
     fi
 
     # Check if the fingerprint already exists in the cluster's authorized_keys
-    EXISTING_KEYS=$(aws ssm start-session "${aws_cli_args[@]}" --target sagemaker-cluster:${cluster_id}_${node_group}-${instance_id} --document-name AmazonEKS-ExecuteNonInteractiveCommand --parameters command="cat ${auth_keys_path}" </dev/null 2>&1)
+    EXISTING_KEYS=$(aws ssm start-session "${aws_cli_args[@]}" --target sagemaker-cluster:${cluster_id}_${node_group}-${instance_id} --document-name AmazonEKS-ExecuteNonInteractiveCommand --parameters command="cat ${auth_keys_path}" </dev/null 2>/dev/null)
     local read_rc=$?
 
     # The SSM session plugin may return non-zero even on success (due to "Cannot perform start session: EOF").
@@ -237,10 +237,10 @@ add_keypair_to_cluster() {
         if [[ $ADD_KEYPAIR == "yes" ]]; then
             echo "Adding ... ${PUBLIC_KEY}"
             command="sed -i \$a$(escape_spaces "$PUBLIC_KEY") ${auth_keys_path}"
-            aws ssm start-session "${aws_cli_args[@]}" --target sagemaker-cluster:${cluster_id}_${node_group}-${instance_id}  --document-name AmazonEKS-ExecuteNonInteractiveCommand  --parameters command="$command" </dev/null 2>&1
+            aws ssm start-session "${aws_cli_args[@]}" --target sagemaker-cluster:${cluster_id}_${node_group}-${instance_id}  --document-name AmazonEKS-ExecuteNonInteractiveCommand  --parameters command="$command" </dev/null >/dev/null 2>/dev/null
             
             # Verify the key was actually written by re-reading authorized_keys
-            local verify_keys=$(aws ssm start-session "${aws_cli_args[@]}" --target sagemaker-cluster:${cluster_id}_${node_group}-${instance_id} --document-name AmazonEKS-ExecuteNonInteractiveCommand --parameters command="cat ${auth_keys_path}" </dev/null 2>&1)
+            local verify_keys=$(aws ssm start-session "${aws_cli_args[@]}" --target sagemaker-cluster:${cluster_id}_${node_group}-${instance_id} --document-name AmazonEKS-ExecuteNonInteractiveCommand --parameters command="cat ${auth_keys_path}" </dev/null 2>/dev/null)
             if echo "$verify_keys" | grep -Fq "$PUBLIC_KEY"; then
                 echo "✅ Your SSH public key ${ssh_key} has been added to user ${ssh_user} on the cluster."
             else
