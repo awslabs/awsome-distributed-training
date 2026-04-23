@@ -13,4 +13,4 @@ WORKDIR /fsdp
 # HyperPod-specific image with elastic agent
 FROM base AS hpto
 
-RUN pip install hyperpod-elastic-agent
+RUN pip install hyperpod-elastic-agent==1.1.2
