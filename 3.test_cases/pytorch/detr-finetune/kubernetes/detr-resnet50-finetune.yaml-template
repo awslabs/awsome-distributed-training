@@ -28,9 +28,6 @@ spec:
           - name: fsx-storage
             persistentVolumeClaim:
               claimName: fsx-pvc
-          - name: model-cache
-            emptyDir:
-              sizeLimit: 10Gi
           - name: shmem
             hostPath:
               path: /dev/shm
@@ -51,6 +48,16 @@ spec:
                   nvidia.com/gpu: 1
                   vpc.amazonaws.com/efa: 1
               env:
+              # -- HuggingFace offline mode (model weights are baked into the image) --
+              - name: TRANSFORMERS_OFFLINE
+                value: "1"
+              - name: HF_HUB_OFFLINE
+                value: "1"
+              - name: TRANSFORMERS_CACHE
+                value: "/workspace/cache/transformers"
+              - name: HF_HOME
+                value: "/workspace/cache/huggingface"
+              # -- Logging & debugging --
               - name: LOGLEVEL
                 value: "DEBUG"
               - name: TORCH_DISTRIBUTED_DEBUG
@@ -65,6 +72,7 @@ spec:
                 value: "/local/nccl_trace_rank_"
               - name: PYTORCH_CUDA_ALLOC_CONF
                 value: "expandable_segments:True"
+              # -- NCCL --
               - name: NCCL_DEBUG
                 value: "INFO"
               - name: NCCL_SOCKET_IFNAME
@@ -75,27 +83,22 @@ spec:
                 value: "simple"
               - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
                 value: "1"
+              # -- EFA --
               - name: FI_PROVIDER
                 value: "efa"
               - name: FI_EFA_FORK_SAFE
                 value: "1"
+              # -- Application --
               - name: PYTHONPATH
                 value: "/workspace/src:/workspace"
               - name: QAI_HUB_MODEL_ID
                 value: "detr_resnet50"
-              - name: TRANSFORMERS_CACHE
-                value: "/workspace/cache/transformers"
-              - name: HF_HOME
-                value: "/workspace/cache/huggingface"
               command:
                 - bash
                 - -c
                 - |
                   set -ex
-                  echo "Starting DETR-ResNet50 fine-tuning setup..."
-
-                  # Create cache directories
-                  mkdir -p "/workspace/cache/transformers" "/workspace/cache/huggingface"
+                  echo "Starting DETR-ResNet50 fine-tuning..."
 
                   # Setup checkpoint directory
                   if [ -w "/fsx/checkpoint" ]; then
@@ -105,16 +108,8 @@ spec:
                     mkdir -p ${CHECKPOINT_DIR}
                   fi
 
-                  # Verify QAI Hub installation
-                  python3 -c "import qai_hub_models; print('QAI Hub models ready')"
-
-                  # Pre-download DETR model to cache
-                  echo "Pre-loading DETR-ResNet50 model..."
-                  python3 -c "
-                  from qai_hub_models.models.detr_resnet50 import Model
-                  model = Model.from_pretrained()
-                  print('DETR-ResNet50 model loaded successfully')
-                  "
+                  # Verify installation
+                  python3 -c "from qai_hub_models.models.detr_resnet50 import Model; print('QAI Hub DETR-ResNet50 ready')"
 
                   echo "Starting DETR object detection training..."
                   python3 -m torch.distributed.run \
@@ -137,8 +132,6 @@ spec:
               volumeMounts:
                 - name: fsx-storage
                   mountPath: /fsx
-                - name: model-cache
-                  mountPath: /workspace/cache
                 - name: shmem
                   mountPath: /dev/shm
                 - name: local

@@ -32,6 +32,12 @@ classes on supermarket shelf images:
 - **Price** -- price tags and labels
 - **Product** -- products on shelves
 
+The pre-trained weights are loaded from
+[facebook/detr-resnet-50](https://huggingface.co/facebook/detr-resnet-50) on
+HuggingFace Hub via the
+[Qualcomm AI Hub](https://aihub.qualcomm.com/models/detr_resnet50) model wrapper.
+The trained model can subsequently be deployed to edge devices via Qualcomm AI Hub.
+
 The training uses PyTorch DDP via Kubeflow PyTorchJob for distributed training
 across multiple GPU nodes connected with EFA networking.
 
@@ -40,10 +46,13 @@ across multiple GPU nodes connected with EFA networking.
 - An Amazon EKS cluster with GPU nodes (e.g., `ml.g5.8xlarge`), accessible via
   `kubectl`. We recommend setting up the cluster using the templates in
   [1.architectures](../../../1.architectures).
-- An Amazon FSx for Lustre persistent volume claim named `fsx-pvc`.
+- An Amazon FSx for Lustre persistent volume claim (default name: `fsx-pvc`; see
+  [kubernetes/README.md](kubernetes/README.md) if your cluster uses a different
+  PVC name).
 - [Kubeflow Training Operator](https://www.kubeflow.org/docs/components/training/pytorch/)
   deployed to your cluster.
-- Docker installed locally for building container images.
+- Docker installed on a build machine with internet access (the Docker build
+  downloads model weights from HuggingFace Hub).
 - AWS CLI configured with ECR access.
 
 ## Dataset
@@ -108,9 +117,12 @@ The model is based on [DETR (End-to-End Object Detection with Transformers)](htt
 3. **Detection Heads**: Custom classification head (num_classes + 1 for
    background) and 3-layer MLP bounding box regression head
 
-The pre-trained DETR-ResNet50 model is loaded from Qualcomm AI Hub and wrapped
-with custom detection heads (`QAIHubDETRWrapper`) that replace the original
-91-class COCO heads.
+Pre-trained DETR-ResNet50 weights are loaded from
+[facebook/detr-resnet-50](https://huggingface.co/facebook/detr-resnet-50) on
+HuggingFace Hub via the Qualcomm AI Hub model wrapper. The weights are baked
+into the Docker image at build time so that training nodes do not require
+internet access. The model is then wrapped with custom detection heads
+(`QAIHubDETRWrapper`) that replace the original 91-class COCO heads.
 
 ### Training Configuration
 

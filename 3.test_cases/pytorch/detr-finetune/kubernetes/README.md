@@ -8,10 +8,15 @@ The guide assumes that you have the following:
 
 - An Amazon EKS cluster with GPU nodes (e.g., `ml.g5.8xlarge`), accessible via
   `kubectl`.
-- An Amazon FSx for Lustre persistent volume claim named `fsx-pvc`. You can use
-  an example from [here](https://github.com/aws-samples/aws-do-eks/tree/main/Container-Root/eks/deployment/csi/fsx)
-  if you need to create one.
-- Docker installed locally.
+- An Amazon FSx for Lustre persistent volume claim. The YAML template defaults
+  to the name `fsx-pvc`. If your cluster uses a different name (e.g.,
+  `fsx-claim`), update the `claimName` field in the generated YAML before
+  applying, or use `sed`:
+  ```bash
+  sed -i 's/fsx-pvc/fsx-claim/g' detr-resnet50-finetune.yaml
+  ```
+- Docker installed on a machine with **internet access** (the build downloads
+  model weights from HuggingFace Hub and bakes them into the image).
 - The dataset uploaded to FSx at `/fsx/data/` (see [data/README.md](../data/README.md)).
 
 We recommend that you setup a Kubernetes cluster using the templates in the
@@ -25,12 +30,21 @@ kubectl apply -k "github.com/kubeflow/training-operator/manifests/overlays/stand
 
 ## 1. Build Container Image
 
+The Docker build downloads DETR-ResNet50 pre-trained weights from HuggingFace
+Hub and bakes them into the image. This means the training pods do **not** need
+internet access at runtime, which is important for clusters in private subnets
+without a NAT gateway.
+
 ```bash
 export AWS_REGION=$(aws ec2 describe-availability-zones --output text --query 'AvailabilityZones[0].[RegionName]')
 export ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 export REGISTRY=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/
-docker build -t ${REGISTRY}detr-finetune:latest ..
+docker build -t ${REGISTRY}detr-finetune:latest -f Dockerfile .
 ```
+
+> **Note**: Run the `docker build` command from the `detr-finetune/` directory
+> (the parent of `kubernetes/`), where `Dockerfile` and `detr_main.py` are
+> located.
 
 ## 2. Push to ECR
 
