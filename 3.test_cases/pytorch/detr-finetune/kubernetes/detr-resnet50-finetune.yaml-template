@@ -7,7 +7,7 @@ spec:
     rdzvBackend: c10d
     minReplicas: 2
     maxReplicas: 36
-    maxRestarts: 100
+    maxRestarts: 3
     metrics:
       - type: Resource
         resource:
@@ -18,7 +18,7 @@ spec:
   pytorchReplicaSpecs:
     Worker:
       replicas: $NUM_NODES
-      restartPolicy: OnFailure
+      restartPolicy: ExitCode
       template:
         metadata:
           labels:
@@ -108,6 +108,13 @@ spec:
                     mkdir -p ${CHECKPOINT_DIR}
                   fi
 
+                  # Build resume flag if a checkpoint exists from a previous run
+                  RESUME_FLAG=""
+                  if [ -f "${CHECKPOINT_DIR}/checkpoint.pth.tar" ]; then
+                    echo "Found existing checkpoint, resuming training..."
+                    RESUME_FLAG="--resume=${CHECKPOINT_DIR}/checkpoint.pth.tar"
+                  fi
+
                   # Verify installation
                   python3 -c "from qai_hub_models.models.detr_resnet50 import Model; print('QAI Hub DETR-ResNet50 ready')"
 
@@ -128,6 +135,7 @@ spec:
                     --pretrained \
                     --num-classes=2 \
                     --print-freq=10 \
+                    ${RESUME_FLAG} \
                     /fsx/data
               volumeMounts:
                 - name: fsx-storage

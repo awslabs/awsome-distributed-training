@@ -1,4 +1,4 @@
-# DETR-ResNet50 Object Detection Fine-tuning <!-- omit in toc -->
+# DETR-ResNet50 Object Detection Fine-tuning
 
 Fine-tune a [DETR (DEtection TRansformer)](https://arxiv.org/abs/2005.12872) ResNet-50
 model for object detection using PyTorch Distributed Data Parallel (DDP) on
@@ -43,14 +43,14 @@ across multiple GPU nodes connected with EFA networking.
 
 ## Prerequisites
 
-- An Amazon EKS cluster with GPU nodes (e.g., `ml.g5.8xlarge`), accessible via
-  `kubectl`. We recommend setting up the cluster using the templates in
-  [1.architectures](../../../1.architectures).
+- An Amazon SageMaker HyperPod EKS cluster or Amazon EKS cluster with GPU nodes
+  (e.g., `ml.g5.8xlarge`), accessible via `kubectl`. We recommend setting up the
+  cluster using the templates in [1.architectures](../../../1.architectures).
 - An Amazon FSx for Lustre persistent volume claim (default name: `fsx-pvc`; see
   [kubernetes/README.md](kubernetes/README.md) if your cluster uses a different
   PVC name).
 - [Kubeflow Training Operator](https://www.kubeflow.org/docs/components/training/pytorch/)
-  deployed to your cluster.
+  deployed to your cluster (pre-installed on SageMaker HyperPod EKS).
 - Docker installed on a build machine with internet access (the Docker build
   downloads model weights from HuggingFace Hub).
 - AWS CLI configured with ECR access.
@@ -152,8 +152,7 @@ on `ml.g5.8xlarge` instances:
 
 | Metric | Value |
 |--------|-------|
-| Training Time | ~8-10 minutes |
-| Final Validation Loss | ~0.64 |
+| Final Validation Loss | ~1.24 |
 | Dataset | 36 train / 9 val images |
 
 **Note**: The small dataset size (45 images) is intentional for workshop/demo

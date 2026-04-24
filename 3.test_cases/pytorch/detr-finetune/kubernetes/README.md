@@ -1,4 +1,4 @@
-# Kubernetes Deployment <!-- omit in toc -->
+# Kubernetes Deployment
 
 Deploy DETR-ResNet50 fine-tuning as a distributed PyTorchJob on Amazon EKS.
 
@@ -6,8 +6,8 @@ Deploy DETR-ResNet50 fine-tuning as a distributed PyTorchJob on Amazon EKS.
 
 The guide assumes that you have the following:
 
-- An Amazon EKS cluster with GPU nodes (e.g., `ml.g5.8xlarge`), accessible via
-  `kubectl`.
+- An Amazon SageMaker HyperPod EKS cluster or Amazon EKS cluster with GPU nodes
+  (e.g., `ml.g5.8xlarge`), accessible via `kubectl`.
 - An Amazon FSx for Lustre persistent volume claim. The YAML template defaults
   to the name `fsx-pvc`. If your cluster uses a different name (e.g.,
   `fsx-claim`), update the `claimName` field in the generated YAML before
@@ -22,11 +22,11 @@ The guide assumes that you have the following:
 We recommend that you setup a Kubernetes cluster using the templates in the
 architectures [directory](../../../../1.architectures).
 
-Make sure Kubeflow Training Operator is deployed to your cluster:
-
-```bash
-kubectl apply -k "github.com/kubeflow/training-operator/manifests/overlays/standalone?ref=v1.7.0"
-```
+> **Note**: Amazon SageMaker HyperPod EKS clusters come with the Kubeflow
+> Training Operator pre-installed. If you are using a vanilla EKS cluster,
+> ensure the
+> [Kubeflow Training Operator](https://www.kubeflow.org/docs/components/training/pytorch/)
+> is deployed before proceeding.
 
 ## 1. Build Container Image
 
@@ -42,9 +42,7 @@ export REGISTRY=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/
 docker build -t ${REGISTRY}detr-finetune:latest -f Dockerfile .
 ```
 
-> **Note**: Run the `docker build` command from the `detr-finetune/` directory
-> (the parent of `kubernetes/`), where `Dockerfile` and `detr_main.py` are
-> located.
+**Note**: Run the `docker build` command from the `detr-finetune/` directory (the parent of `kubernetes/`), where `Dockerfile` and `detr_main.py` are located.
 
 ## 2. Push to ECR
 
