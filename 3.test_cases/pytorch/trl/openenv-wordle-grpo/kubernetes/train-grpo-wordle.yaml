@@ -1,0 +1,109 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# GRPO Wordle Training on SageMaker HyperPod (EKS) - Single Node, Multi-GPU (4x L40S)
+# Option 1: vLLM colocate mode (1 GPU, all 4 available)
+#   - vLLM and training share the same GPU; simpler, lower throughput
+#   - Set VLLM_MODE=colocate, CUDA_VISIBLE_DEVICES=0,1,2,3
+#
+# Option 2: vLLM server mode (4 GPUs: 1 for inference, 3 for FSDP training)
+#   - GPU 0 runs a dedicated vLLM server for fast generation
+#   - GPUs 1-3 run FSDP-sharded GRPO training
+#   - Higher throughput, supports larger models
+# Usage:
+#   envsubst < train-grpo-wordle.yaml | kubectl apply -f -
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: grpo-wordle
+  namespace: ${NAMESPACE}
+  labels:
+    app: grpo-wordle
+  annotations:
+    sagemaker.amazonaws.com/enable-job-auto-resume: "true"
+    sagemaker.amazonaws.com/job-max-retry-count: "3"
+spec:
+  restartPolicy: OnFailure
+  tolerations:
+    - key: sagemaker.amazonaws.com/node-health-status
+      operator: Exists
+      effect: NoSchedule
+  nodeSelector:
+    node.kubernetes.io/instance-type: $INSTANCE_TYPE
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: sagemaker.amazonaws.com/node-health-status
+                operator: In
+                values:
+                  - Schedulable
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: sagemaker.amazonaws.com/deep-health-check-status
+                operator: In
+                values:
+                  - Passed
+  containers:
+    - name: pytorch
+      image: ${REGISTRY}${IMAGE}:${TAG}
+      imagePullPolicy: Always
+      resources:
+        requests:
+          nvidia.com/gpu: $NUM_GPU_PER_NODE
+          memory: "180Gi"
+        limits:
+          nvidia.com/gpu: $NUM_GPU_PER_NODE
+          memory: "180Gi"
+      env:
+      - name: PYTORCH_CUDA_ALLOC_CONF
+        value: "expandable_segments:True,garbage_collection_threshold:0.6"
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_HOME
+        value: "/fsx/hf_cache"
+      - name: CUDA_VISIBLE_DEVICES
+        value: "0,1,2,3"
+      command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -euo pipefail
+          python /wordle-grpo/train_wordle_grpo.py \
+            --model-id $MODEL_NAME \
+            --tokenizer-id $MODEL_NAME \
+            --env-url http://openenv-wordle:7860 \
+            --system-prompt-path /wordle-grpo/wordle_prompt.txt \
+            --vllm-mode $VLLM_MODE \
+            --output-dir /fsx/checkpoints/wordle-grpo \
+            --num-generations $NUM_GENERATIONS \
+            --gradient-accumulation-steps $GRADIENT_ACCUMULATION_STEPS \
+            --learning-rate $LEARNING_RATE \
+            --per-device-batch-size 1 \
+            --num-epochs 1 \
+            --save-interval 25 \
+            --logging-steps 1 \
+            --dataset-size 3000 \
+            --max-turns 6 \
+            --temperature 0.8 \
+            --report-to none
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+  volumes:
+    - name: shmem
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+    - name: fsx-storage
+      persistentVolumeClaim:
+        claimName: ${FSX_PVC}
