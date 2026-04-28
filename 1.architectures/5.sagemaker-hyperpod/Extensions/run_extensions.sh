@@ -10,9 +10,10 @@
 #
 # Expected S3 layout:
 #   s3://<bucket>/<prefix>/
-#   ├── run_extensions.sh          (this file -- OnInitComplete target)
-#   ├── add-users/                 (user management scripts + config.yaml)
-#   └── observability/             (observability scripts + config.json)
+#   |-- run_extensions.sh          (this file -- OnInitComplete target)
+#   |-- detect-node/               (node type detection utility)
+#   |-- add-users/                 (user management scripts + config)
+#   |-- observability/             (observability scripts + config.json)
 #
 # Prerequisites:
 #   - AMI-based configuration (Slurm, Docker pre-installed)
@@ -69,6 +70,9 @@ run_feature() {
 # Main
 # ===========================================================================
 logger "[start] run_extensions.sh"
+
+# Always run node detection first -- other extensions depend on nodeinfo.json
+run_feature "detect-node" "$SCRIPT_DIR/detect-node/detect_node.sh"
 
 if [ "$ENABLE_ADD_USERS" = "true" ]; then
     run_feature "add-users" "$SCRIPT_DIR/add-users/add_users.sh"

@@ -10,15 +10,15 @@
 # users in Slurm accounting.
 #
 # Supports three config sources (checked in this order):
-#   1. shared_users.txt — legacy CSV format (username,uid,home) for backward
+#   1. shared_users.txt |-- legacy CSV format (username,uid,home) for backward
 #      compatibility with the base lifecycle scripts. If present (even if empty),
 #      shared_users.yaml is ignored.
-#   2. shared_users.yaml — YAML format with simple user list or groups with
+#   2. shared_users.yaml |-- YAML format with simple user list or groups with
 #      per-group Slurm accounts and filesystem mounts.
 #   3. If neither file exists, the script exits with an error.
 #
 # Prerequisites:
-#   - Slurm daemons must be started (included in AMI-based configuration)
+#   - /opt/ml/config/nodeinfo.json must exist (run detect-node/detect_node.sh first)
 #   - shared_users.txt or shared_users.yaml must be configured with user definitions
 #   - A shared filesystem (FSx for Lustre or OpenZFS) is recommended but not required.
 #     Without one, home directories and SSH keys are local to each node.
@@ -47,69 +47,18 @@ logger_err() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---------------------------------------------------------------------------
-# Detect node type from running Slurm daemons
+# Read node type from nodeinfo.json (written by detect-node/detect_node.sh).
+# Steps 1-3 run on all nodes. Only step 4 (Slurm accounting) is controller-only.
 # ---------------------------------------------------------------------------
-detect_node_type() {
-    if systemctl is-active --quiet slurmctld 2>/dev/null; then
-        echo "controller"
-        return 0
-    fi
-
-    if ! systemctl is-active --quiet slurmd 2>/dev/null; then
-        logger_err "ERROR: Neither slurmctld nor slurmd is running."
-        exit 1
-    fi
-
-    local hostname
-    hostname=$(hostname -s)
-    local timeout=180
-    local interval=5
-    local elapsed=0
-
-    logger_err "Detecting compute vs login for $hostname..."
-    while [ $elapsed -lt $timeout ]; do
-        local sinfo_output
-        sinfo_output=$(sinfo -N --noheader 2>/dev/null || true)
-        if [ -n "$sinfo_output" ]; then
-            if echo "$sinfo_output" | grep -qw "$hostname"; then
-                echo "compute"
-            else
-                echo "login"
-            fi
-            return 0
-        fi
-        logger_err "sinfo not yet available. Retrying in ${interval}s... (${elapsed}s/${timeout}s)"
-        sleep $interval
-        elapsed=$((elapsed + interval))
-    done
-
-    logger_err "WARNING: sinfo timed out. Falling back to resource_config.json."
-    local rc_path="/opt/ml/config/resource_config.json"
-    if [ -f "$rc_path" ]; then
-        local my_ip
-        my_ip=$(hostname -I | awk '{print $1}')
-        local group_name
-        group_name=$(python3 -c "
-import json, sys
-with open('$rc_path') as f:
-    rc = json.load(f)
-for g in rc.get('InstanceGroups', []):
-    for inst in g.get('Instances', []):
-        if inst.get('CustomerIpAddress') == '$my_ip':
-            print(g['Name'])
-            sys.exit(0)
-print('')
-" 2>/dev/null)
-        if echo "$group_name" | grep -qi "login"; then
-            echo "login"
-        else
-            echo "compute"
-        fi
-    else
-        logger_err "WARNING: resource_config.json not found. Defaulting to compute."
-        echo "compute"
-    fi
-}
+NODEINFO_FILE="/opt/ml/config/nodeinfo.json"
+if [[ -f "$NODEINFO_FILE" ]]; then
+    NODE_TYPE=$(python3 -c "import json; print(json.load(open('$NODEINFO_FILE'))['node_type'])")
+    logger "Node type from nodeinfo.json: $NODE_TYPE"
+else
+    logger "WARNING: $NODEINFO_FILE not found. Run detect-node/detect_node.sh first."
+    logger "Falling back: assuming not controller (Slurm accounting will be skipped)."
+    NODE_TYPE="unknown"
+fi
 
 # ---------------------------------------------------------------------------
 # Detect shared filesystem mount
@@ -155,7 +104,7 @@ USE_LEGACY=false
 
 if [[ -f "$SHARED_USERS_FILE" ]]; then
     USE_LEGACY=true
-    logger "Found shared_users.txt — using legacy format (shared_users.yaml ignored if present)."
+    logger "Found shared_users.txt |-- using legacy format (shared_users.yaml ignored if present)."
 
     if [[ ! -s "$SHARED_USERS_FILE" ]]; then
         logger "shared_users.txt is empty. No users to configure."
@@ -273,12 +222,6 @@ if [[ ! -f "$MANIFEST" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Detect node type
-# ---------------------------------------------------------------------------
-NODE_TYPE=$(detect_node_type)
-logger "Detected node type: $NODE_TYPE"
-
-# ---------------------------------------------------------------------------
 # Process each group
 # ---------------------------------------------------------------------------
 GROUP_COUNT=$(python3 -c "import json; print(len(json.load(open('$MANIFEST'))))")
@@ -330,4 +273,4 @@ print(f\"USER_COUNT={m['user_count']}\")
 done
 
 rm -rf "$WORK_DIR"
-logger "Add users complete for $NODE_TYPE node."
+logger "Add users complete."

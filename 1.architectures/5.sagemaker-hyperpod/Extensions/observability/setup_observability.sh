@@ -66,81 +66,113 @@ wait_for_scontrol() {
 }
 
 # ---------------------------------------------------------------------------
-# Detect node type from running Slurm daemons
+# Detect node type
 #
-# During cluster creation, OnInitComplete may run on compute/login nodes
-# before the controller is fully ready. sinfo depends on the controller,
-# so we retry with a timeout before deciding.
+# Primary: read from /opt/ml/config/nodeinfo.json (written by detect-node
+# utility in run_extensions.sh before this script runs).
 #
-# Fallback: if sinfo never responds, we check resource_config.json which
-# HyperPod generates with instance group names.
+# Fallback: read resource_config.json + provisioning_parameters.json
+# directly (same algorithm as detect-node, for standalone use without
+# run_extensions.sh).
+#
+# This approach is deterministic, instant, and has zero dependency on
+# Slurm services being running -- which matters during scale-up when
+# slurmd may not be started yet.
 # ---------------------------------------------------------------------------
 detect_node_type() {
-    if systemctl is-active --quiet slurmctld 2>/dev/null; then
-        echo "controller"
-        return 0
+    local nodeinfo="/opt/ml/config/nodeinfo.json"
+
+    # Primary: nodeinfo.json (written by detect-node utility)
+    if [ -f "$nodeinfo" ]; then
+        local node_type
+        node_type=$(python3 -c "import json; print(json.load(open('$nodeinfo'))['node_type'])" 2>/dev/null)
+        if [ -n "$node_type" ]; then
+            logger_err "Node type from nodeinfo.json: $node_type"
+            echo "$node_type"
+            return 0
+        fi
     fi
 
-    if ! systemctl is-active --quiet slurmd 2>/dev/null; then
-        logger_err "ERROR: Neither slurmctld nor slurmd is running. Cannot detect node type."
-        logger_err "Ensure Slurm is started before running this script."
+    # Fallback: detect from platform config files directly
+    logger_err "nodeinfo.json not found, detecting from platform config files..."
+    local pp_file="/opt/ml/config/provisioning_parameters.json"
+    local rc_file="/opt/ml/config/resource_config.json"
+
+    if [ ! -f "$rc_file" ]; then
+        logger_err "ERROR: $rc_file not found. Cannot detect node type."
         exit 1
     fi
 
-    # slurmd is running -- determine if this is compute or login.
-    # Compute nodes appear in sinfo; login nodes do not.
-    local hostname
-    hostname=$(hostname -s)
-    local timeout=180
-    local interval=5
-    local elapsed=0
+    local node_type
+    node_type=$(python3 -c "
+import json, socket, sys, time
 
-    logger_err "Detecting compute vs login for $hostname (waiting for sinfo)..."
-    while [ $elapsed -lt $timeout ]; do
-        local sinfo_output
-        sinfo_output=$(sinfo -N --noheader 2>/dev/null || true)
-        if [ -n "$sinfo_output" ]; then
-            if echo "$sinfo_output" | grep -qw "$hostname"; then
-                echo "compute"
-                return 0
-            else
-                echo "login"
-                return 0
-            fi
-        fi
-        logger_err "sinfo not yet available. Retrying in ${interval}s... (${elapsed}s/${timeout}s)"
-        sleep $interval
-        elapsed=$((elapsed + interval))
-    done
+rc_file = '$rc_file'
+pp_file = '$pp_file'
 
-    # Timed out -- fall back to resource_config.json
-    logger_err "WARNING: sinfo did not return data within ${timeout}s."
-    logger_err "Falling back to resource_config.json for node type detection."
-    local rc_path="/opt/ml/config/resource_config.json"
-    if [ -f "$rc_path" ]; then
-        local my_ip
-        my_ip=$(hostname -I | awk '{print $1}')
-        local group_name
-        group_name=$(python3 -c "
-import json, sys
-with open('$rc_path') as f:
+# Get this node's IP
+def get_ip():
+    for attempt in range(5):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('10.254.254.254', 1))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            time.sleep(2)
+    return '127.0.0.1'
+
+my_ip = get_ip()
+
+with open(rc_file) as f:
     rc = json.load(f)
+
+# Find this node's instance group
+group_name = ''
 for g in rc.get('InstanceGroups', []):
     for inst in g.get('Instances', []):
-        if inst.get('CustomerIpAddress') == '$my_ip':
-            print(g['Name'])
-            sys.exit(0)
-print('')
+        if inst.get('CustomerIpAddress') == my_ip:
+            group_name = g.get('Name', '')
+            break
+    if group_name:
+        break
+
+if not group_name:
+    print('compute', end='')
+    sys.exit(0)
+
+# Compare to provisioning_parameters if available
+try:
+    with open(pp_file) as f:
+        pp = json.load(f)
+    controller_group = pp.get('controller_group', '')
+    login_group = pp.get('login_group', '') or ''
+    if group_name == controller_group:
+        print('controller', end='')
+    elif group_name == login_group:
+        print('login', end='')
+    else:
+        print('compute', end='')
+except FileNotFoundError:
+    # No provisioning_parameters.json (API-driven config)
+    # Fall back to group name heuristics
+    lower = group_name.lower()
+    if 'controller' in lower or 'head' in lower:
+        print('controller', end='')
+    elif 'login' in lower:
+        print('login', end='')
+    else:
+        print('compute', end='')
 " 2>/dev/null)
-        if echo "$group_name" | grep -qi "login"; then
-            echo "login"
-        else
-            echo "compute"
-        fi
-    else
-        logger_err "WARNING: resource_config.json not found. Defaulting to compute."
-        echo "compute"
+
+    if [ -z "$node_type" ]; then
+        logger_err "WARNING: Node type detection failed. Defaulting to compute."
+        node_type="compute"
     fi
+
+    logger_err "Detected node type: $node_type (from platform config)"
+    echo "$node_type"
 }
 
 # ---------------------------------------------------------------------------

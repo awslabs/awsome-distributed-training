@@ -118,7 +118,7 @@ The Prolog/Epilog scripts are provided by the HyperPod AMI at:
 - `/opt/slurm/etc/epilog.d/700_dcgm_job_map_cleanup.sh`
 
 They use file locking (`flock`) for safe concurrent access and are designed
-to never return non-zero exit codes Ã¢â‚¬â€ a prolog failure would block the job
+to never return non-zero exit codes -- a prolog failure would block the job
 from starting, and an epilog failure would drain the node, both of which
 are too disruptive for a metrics-only feature.
 
@@ -185,10 +185,13 @@ aws amp create-workspace --alias hyperpod-observability \
 The remote write URL is:
 `https://aps-workspaces.<region>.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write`
 
-### 3. Add AMP remote write permissions to the cluster execution role
+### 3. Add required permissions to the cluster execution role
 
-The HyperPod cluster execution role must have `aps:RemoteWrite` permission.
-Attach an inline policy:
+The HyperPod cluster execution role needs two additional policies beyond
+the base `AmazonSageMakerClusterInstanceRolePolicy`:
+
+**a) AMP remote write** -- Required for the OTel Collector to ship metrics
+to Amazon Managed Prometheus:
 
 ```bash
 aws iam put-role-policy \
@@ -203,6 +206,33 @@ aws iam put-role-policy \
         }]
     }'
 ```
+
+**b) ECR image pull** -- Required for pulling the exporter container images
+(Node Exporter, DCGM Exporter, EFA Exporter, OTel Collector) from the
+HyperPod ECR registry (`602401143452.dkr.ecr.<region>.amazonaws.com`):
+
+```bash
+aws iam put-role-policy \
+    --role-name <your-execution-role> \
+    --policy-name ECRPullPolicy \
+    --policy-document '{
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Action": [
+                "ecr:BatchGetImage",
+                "ecr:GetAuthorizationToken",
+                "ecr:GetDownloadUrlForLayer"
+            ],
+            "Resource": "*"
+        }]
+    }'
+```
+
+> **Important:** Both policies are required. Without the ECR policy, the
+> exporter container images cannot be pulled and the observability setup
+> will fail. Without the AMP policy, metrics cannot be shipped to
+> Prometheus.
 
 ### 4. Network requirements
 

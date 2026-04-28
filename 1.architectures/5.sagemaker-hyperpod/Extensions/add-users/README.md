@@ -33,7 +33,7 @@ takes precedence (even if empty) for backward compatibility.
 
 ### Legacy Format (shared_users.txt)
 
-Plain CSV — one user per line: `username,uid,home_directory`
+Plain CSV |-- one user per line: `username,uid,home_directory`
 
 ```
 alice,2001,/fsx/alice
@@ -47,7 +47,7 @@ for compatibility but the script auto-detects the shared filesystem mount.
 
 ### YAML Simple Format (shared_users.yaml)
 
-A flat list of users — all get global defaults:
+A flat list of users |-- all get global defaults:
 
 ```yaml
 users:
@@ -64,7 +64,7 @@ users:
 ### YAML Groups Format (shared_users.yaml)
 
 Users organized into groups with per-group Slurm accounts and filesystem mounts.
-Groups are purely organizational — they do not create Linux groups. Per-group
+Groups are purely organizational |-- they do not create Linux groups. Per-group
 settings override the global defaults.
 
 ```yaml
@@ -94,10 +94,10 @@ groups:
 
 | Field | Required | Scope | Default | Description |
 |-------|----------|-------|---------|-------------|
-| `users` | Yes* | Global | — | Simple format: flat list of users. |
-| `groups` | Yes* | Global | — | Groups format: list of user groups. |
-| `groups[].name` | Yes | Group | — | Group name (organizational only, no Linux group created). |
-| `groups[].users` | Yes | Group | — | Users in this group. |
+| `users` | Yes* | Global |  | Simple format: flat list of users. |
+| `groups` | Yes* | Global |  | Groups format: list of user groups. |
+| `groups[].name` | Yes | Group |  | Group name (organizational only, no Linux group created). |
+| `groups[].users` | Yes | Group |  | Users in this group. |
 | `groups[].slurm_account` | No | Group | `root` | Slurm account for this group. Overrides global default. |
 | `groups[].shared_filesystem_mount` | No | Group | auto-detect | Home directory path for this group. Overrides global default. |
 | `shared_filesystem_mount` | No | Global | auto-detect | Default home directory path for all users/groups. |
@@ -110,8 +110,8 @@ groups:
 The script automatically detects which shared filesystem to use for home directories,
 matching the base lifecycle scripts' behavior:
 
-1. **OpenZFS at `/home`** (NFS mount) — preferred when present
-2. **FSx for Lustre at `/fsx`** — fallback
+1. **OpenZFS at `/home`** (NFS mount) |-- preferred when present
+2. **FSx for Lustre at `/fsx`** |-- fallback
 
 When both OpenZFS and Lustre are mounted, home directories go on OpenZFS (`/home/<user>`)
 and a data directory is also created on Lustre (`/fsx/<user>`) for training data and
@@ -172,7 +172,7 @@ Per-group `shared_filesystem_mount` overrides the auto-detection for that group.
    sudo srun --partition=<partition-name> bash /fsx/cluster-scripts/add-users/add_users.sh
    ```
 
-Existing users are skipped — only new users are created. The scripts are fully idempotent.
+Existing users are skipped |-- only new users are created. The scripts are fully idempotent.
 
 ## Execution Order
 
@@ -180,11 +180,11 @@ The scripts run in dependency order on every node, once per group:
 
 ```
 add_users.sh (entrypoint)
-  └── For each group:
-      ├── create_posix_users.sh   All nodes: create POSIX users
-      ├── setup_home_dirs.sh      All nodes: home dirs on shared FS
-      ├── setup_ssh_keys.sh       All nodes: SSH keys on shared FS
-      └── setup_slurm_accounts.sh Controller only: Slurm accounting
+  |-- For each group:
+      |-- create_posix_users.sh   All nodes: create POSIX users
+      |-- setup_home_dirs.sh      All nodes: home dirs on shared FS
+      |-- setup_ssh_keys.sh       All nodes: SSH keys on shared FS
+      |-- setup_slurm_accounts.sh Controller only: Slurm accounting
 ```
 
 ## How It Works
@@ -193,9 +193,9 @@ add_users.sh (entrypoint)
 
 The script auto-detects whether it's running on a controller, compute, or login
 node by checking Slurm daemons:
-- `slurmctld` running → controller
-- `slurmd` running + hostname in `sinfo` → compute
-- `slurmd` running + hostname not in `sinfo` → login
+- `slurmctld` running |-- controller
+- `slurmd` running + hostname in `sinfo` |-- compute
+- `slurmd` running + hostname not in `sinfo` |-- login
 
 ### SSH Key Sharing
 
@@ -205,7 +205,7 @@ This ensures all nodes share the same keys for passwordless SSH.
 
 ### Idempotency
 
-All scripts are idempotent — safe to re-run without errors or duplicates:
+All scripts are idempotent |-- safe to re-run without errors or duplicates:
 - Users that already exist are skipped
 - Home directories that already exist are left alone
 - SSH keys that already exist are not regenerated
