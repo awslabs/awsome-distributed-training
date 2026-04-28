@@ -27,8 +27,8 @@
 #SBATCH --ntasks-per-node=8
 #SBATCH --gpus-per-node=8
 #SBATCH --job-name=vjepa21-optim
-#SBATCH --output=/fsx/ubuntu/logs/vjepa21_optim/%A.out
-#SBATCH --error=/fsx/ubuntu/logs/vjepa21_optim/%A.err
+#SBATCH --output=logs/vjepa21_optim/%A.out
+#SBATCH --error=logs/vjepa21_optim/%A.err
 #SBATCH --exclusive
 #SBATCH --partition=b200
 #SBATCH --account=root
