@@ -41,7 +41,6 @@ import torch.utils.data.distributed
 from torch.optim.lr_scheduler import StepLR
 import torchvision.transforms as transforms
 from PIL import Image
-import numpy as np
 
 try:
     from torchmetrics.detection import MeanAveragePrecision
@@ -116,7 +115,7 @@ parser.add_argument(
     help="node rank for distributed training",
 )
 parser.add_argument(
-    "--dist-url", default="tcp://224.66.41.62:23456", type=str,
+    "--dist-url", default="env://", type=str,
     help="url used to set up distributed training",
 )
 parser.add_argument(
@@ -735,6 +734,10 @@ def main_worker(gpu, ngpus_per_node, args):
     global best_loss
     args.gpu = gpu
 
+    # When launched via torchrun, LOCAL_RANK is set automatically
+    if args.gpu is None and "LOCAL_RANK" in os.environ:
+        args.gpu = int(os.environ["LOCAL_RANK"])
+
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
             args.rank = int(os.environ["RANK"])
@@ -759,10 +762,12 @@ def main_worker(gpu, ngpus_per_node, args):
             model.cuda(args.gpu)
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+            model = torch.nn.parallel.DistributedDataParallel(
+                model, device_ids=[args.gpu], find_unused_parameters=True)
         else:
             model.cuda()
-            model = torch.nn.parallel.DistributedDataParallel(model)
+            model = torch.nn.parallel.DistributedDataParallel(
+                model, find_unused_parameters=True)
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
@@ -801,7 +806,9 @@ def main_worker(gpu, ngpus_per_node, args):
     train_transforms = transforms.Compose(
         [
             transforms.Resize((800, 800)),
-            transforms.RandomHorizontalFlip(0.5),
+            # Note: RandomHorizontalFlip is intentionally omitted because the
+            # standard torchvision transform flips images but not bounding box
+            # coordinates, leading to misaligned image-box pairs.
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
             transforms.ToTensor(),
             normalize,

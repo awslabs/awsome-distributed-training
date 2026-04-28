@@ -6,7 +6,7 @@ spec:
   elasticPolicy:
     rdzvBackend: c10d
     minReplicas: 2
-    maxReplicas: 36
+    maxReplicas: $NUM_NODES
     maxRestarts: 3
     metrics:
       - type: Resource
@@ -90,9 +90,7 @@ spec:
                 value: "1"
               # -- Application --
               - name: PYTHONPATH
-                value: "/workspace/src:/workspace"
-              - name: QAI_HUB_MODEL_ID
-                value: "detr_resnet50"
+                value: "/workspace"
               command:
                 - bash
                 - -c
@@ -126,6 +124,7 @@ spec:
                     --master_addr=${MASTER_ADDR:-localhost} \
                     --master_port=${MASTER_PORT:-29500} \
                     /workspace/detr_main.py \
+                    --dist-url=env:// \
                     --arch=detr-resnet50 \
                     --epochs=50 \
                     --batch-size=4 \

@@ -89,7 +89,7 @@ torchrun --nproc_per_node=1 --nnodes=2 detr_main.py /path/to/data \
 | `data` | `data` | Path to dataset directory |
 | `--arch` | `detr-resnet50` | Model architecture |
 | `--epochs` | `50` | Number of training epochs |
-| `--batch-size` | `8` | Mini-batch size per GPU |
+| `--batch-size` | `8` | Mini-batch size per GPU (YAML template uses 4) |
 | `--lr` | `1e-4` | Initial learning rate |
 | `--weight-decay` | `1e-4` | Weight decay |
 | `--num-classes` | `2` | Number of object classes |
