@@ -394,11 +394,48 @@ TOTAL_REMOTE=$(( ${#REMOTE_CONTROLLER[@]} + ${#REMOTE_LOGIN[@]} + ${#REMOTE_COMP
 [[ $TOTAL_REMOTE -eq 0 ]] && echo "  No remote nodes to configure."
 
 # ===================================================================
-# Step 5: Update shared_users.txt + optional S3 upload
+# Step 5: Slurm accounting (add users to Slurm on controller)
 # ===================================================================
 echo ""
 echo "========================================"
-echo " Step 5: Update shared_users.txt"
+echo " Step 5: Slurm accounting"
+echo "========================================"
+
+CONTROLLER_HOST="${CONTROLLER_NODES[0]:-}"
+SLURM_ACCT_SUCCESS=false
+
+if [[ -n "$CONTROLLER_HOST" ]]; then
+    # Build sacctmgr commands for all new users
+    slurm_cmd="sacctmgr -i add account root Description='Root Account' 2>/dev/null || true"
+    for entry in "${CREATED_USERS_DATA[@]}"; do
+        IFS=',' read -r user uid home <<< "$entry"
+        slurm_cmd+="; sacctmgr -i add user $user account=root 2>/dev/null || true"
+    done
+
+    if [[ "$CURRENT_HOST" == "$CONTROLLER_HOST" ]]; then
+        echo "  Running sacctmgr locally (this is the controller)..."
+        eval "$slurm_cmd" && SLURM_ACCT_SUCCESS=true
+    else
+        echo "  Running sacctmgr on controller ($CONTROLLER_HOST) via SSH..."
+        sudo -u "$SSH_USER" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$CONTROLLER_HOST" "$slurm_cmd" 2>&1 && SLURM_ACCT_SUCCESS=true
+    fi
+
+    if [[ "$SLURM_ACCT_SUCCESS" == true ]]; then
+        echo "  ✓ Added ${#CREATED_USERS_DATA[@]} user(s) to Slurm accounting (account: root)"
+    else
+        echo "  ✗ Slurm accounting failed — users may need to be added manually:"
+        echo "    sacctmgr -i add user <username> account=root"
+    fi
+else
+    echo "  ⚠ No controller node found — skipping Slurm accounting"
+fi
+
+# ===================================================================
+# Step 6: Update shared_users.txt + optional S3 upload
+# ===================================================================
+echo ""
+echo "========================================"
+echo " Step 6: Update shared_users.txt"
 echo "========================================"
 
 for entry in "${CREATED_USERS_DATA[@]}"; do
@@ -406,7 +443,6 @@ for entry in "${CREATED_USERS_DATA[@]}"; do
     echo "  + $entry"
 done
 echo "  ✓ Appended ${#CREATED_USERS_DATA[@]} user(s) to $SHARED_USERS_FILE"
-
 echo ""
 read -p "  Upload shared_users.txt to S3? Enter bucket URI (or Enter to skip): " S3_BUCKET_URI
 S3_BUCKET_URI="${S3_BUCKET_URI%/}"
@@ -424,14 +460,14 @@ if [[ -n "$S3_BUCKET_URI" ]]; then
 fi
 
 # ===================================================================
-# Step 6: Summary
+# Step 7: Summary
 # ===================================================================
 echo ""
 echo "========================================"
 echo " ✓ ${#CREATED_USERS_DATA[@]} user(s) created!"
 echo "========================================"
 echo ""
-echo "  Users:"
+echo "  Users created:"
 for entry in "${CREATED_USERS_DATA[@]}"; do
     IFS=',' read -r user uid home <<< "$entry"
     echo "    $user (UID: $uid, Home: $home)"
@@ -445,6 +481,7 @@ echo "    Current:    $CURRENT_HOST ($CURRENT_ROLE) ✓"
 [[ ${#REMOTE_LOGIN[@]} -gt 0 ]]      && echo "    Login:      ${REMOTE_LOGIN[*]}"
 [[ ${#REMOTE_COMPUTE[@]} -gt 0 ]]    && echo "    Compute:    ${#REMOTE_COMPUTE[@]} node(s)"
 echo ""
+echo "  Slurm acct:   $([[ "$SLURM_ACCT_SUCCESS" == true ]] && echo "✓" || echo "⚠ manual setup needed")"
 echo "  Shared users: $SHARED_USERS_FILE ✓"
 [[ "$S3_UPLOAD_SUCCESS" == true ]] && echo "  S3 upload:    ${S3_BUCKET_URI}/shared_users.txt ✓"
 [[ "$S3_UPLOAD_SUCCESS" != true && -z "$S3_BUCKET_URI" ]] && echo "  S3 upload:    skipped — run: aws s3 cp $SHARED_USERS_FILE s3://<bucket>/shared_users.txt"
