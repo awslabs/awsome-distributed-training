@@ -1,0 +1,78 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# OpenEnv Wordle Environment on SageMaker HyperPod (EKS) - Deployment + Service
+# Deploys the TextArena Wordle OpenEnv server as a ClusterIP service
+# so that the GRPO training pod can reach it via Kubernetes DNS.
+# No GPU needed — the Wordle environment is pure CPU.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openenv-wordle
+  namespace: ${NAMESPACE}
+  labels:
+    app: openenv-wordle
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: openenv-wordle
+  template:
+    metadata:
+      labels:
+        app: openenv-wordle
+    spec:
+      tolerations:
+        - key: sagemaker.amazonaws.com/node-health-status
+          operator: Exists
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: sagemaker.amazonaws.com/node-health-status
+                    operator: In
+                    values:
+                      - Schedulable
+      containers:
+      - name: wordle-env
+        # NOTE: This image is externally managed by the HuggingFace Space owner
+        # and may change without notice. No versioned tags are available.
+        image: registry.hf.space/burtenshaw-wordle:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "1"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openenv-wordle
+  namespace: ${NAMESPACE}
+spec:
+  type: ClusterIP
+  ports:
+  - port: 7860
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: openenv-wordle

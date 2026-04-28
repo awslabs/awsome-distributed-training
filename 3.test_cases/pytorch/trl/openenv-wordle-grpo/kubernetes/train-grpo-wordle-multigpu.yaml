@@ -1,0 +1,168 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Multi-GPU GRPO Wordle Training on SageMaker HyperPod (EKS) - vLLM server mode
+#
+# Splits inference and training across GPUs on a single ml.g6e.12xlarge node:
+#   GPU 0:   Dedicated vLLM server for fast rollout generation
+#   GPU 1-3: FSDP-sharded GRPO training (Accelerate launch)
+# Usage:
+#   envsubst < train-grpo-wordle-multigpu.yaml | kubectl apply -f -
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: grpo-wordle-multigpu
+  namespace: ${NAMESPACE}
+  labels:
+    app: grpo-wordle-multigpu
+  annotations:
+    sagemaker.amazonaws.com/enable-job-auto-resume: "true"
+    sagemaker.amazonaws.com/job-max-retry-count: "3"
+spec:
+  restartPolicy: OnFailure
+  tolerations:
+    - key: sagemaker.amazonaws.com/node-health-status
+      operator: Exists
+      effect: NoSchedule
+  nodeSelector:
+    node.kubernetes.io/instance-type: $INSTANCE_TYPE
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: sagemaker.amazonaws.com/node-health-status
+                operator: In
+                values:
+                  - Schedulable
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: sagemaker.amazonaws.com/deep-health-check-status
+                operator: In
+                values:
+                  - Passed
+  initContainers:
+    # Wait for the OpenEnv Wordle environment to be ready
+    - name: wait-for-env
+      image: curlimages/curl:8.12.1
+      command: ["sh", "-c"]
+      args:
+        - |
+          echo "Waiting for OpenEnv Wordle environment..."
+          until curl -sf http://openenv-wordle:7860/health; do
+            echo "  env not ready, retrying in 5s..."
+            sleep 5
+          done
+          echo "OpenEnv Wordle environment is ready!"
+  containers:
+    # Container 1: vLLM inference server on GPU 0
+    - name: vllm-server
+      image: ${REGISTRY}${IMAGE}:${TAG}
+      imagePullPolicy: Always
+      resources:
+        requests:
+          nvidia.com/gpu: 1
+          memory: "60Gi"
+        limits:
+          nvidia.com/gpu: 1
+          memory: "60Gi"
+      env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_HOME
+        value: "/fsx/hf_cache"
+      command:
+        - trl
+        - vllm-serve
+        - --model
+        - $MODEL_NAME
+        - --host
+        # Binds to all interfaces to allow kubelet readiness probes (which connect
+        # via pod IP). Access is limited to the cluster network (no Service exposed).
+        - "0.0.0.0"
+        - --port
+        - "8000"
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        initialDelaySeconds: 60
+        periodSeconds: 10
+
+    # Container 2: GRPO training on GPUs 1-3
+    - name: trainer
+      image: ${REGISTRY}${IMAGE}:${TAG}
+      imagePullPolicy: Always
+      resources:
+        requests:
+          nvidia.com/gpu: 3
+          memory: "60Gi"
+        limits:
+          nvidia.com/gpu: 3
+          memory: "60Gi"
+      env:
+      - name: PYTORCH_CUDA_ALLOC_CONF
+        value: "expandable_segments:True,garbage_collection_threshold:0.6"
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_HOME
+        value: "/fsx/hf_cache"
+      command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -euo pipefail
+          # Wait for vLLM server to be ready
+          echo "Waiting for vLLM server..."
+          until curl -sf http://localhost:8000/health; do
+            sleep 5
+          done
+          echo "vLLM server is ready, starting training..."
+
+          accelerate launch --num_processes 3 \
+            /wordle-grpo/train_wordle_grpo.py \
+              --model-id $MODEL_NAME \
+              --tokenizer-id $MODEL_NAME \
+              --env-url http://openenv-wordle:7860 \
+              --system-prompt-path /wordle-grpo/wordle_prompt.txt \
+              --vllm-mode server \
+              --vllm-server-url http://localhost:8000 \
+              --output-dir /fsx/checkpoints/wordle-grpo-multigpu \
+              --num-generations $NUM_GENERATIONS \
+              --gradient-accumulation-steps $GRADIENT_ACCUMULATION_STEPS \
+              --learning-rate $LEARNING_RATE \
+              --per-device-batch-size 1 \
+              --num-epochs 1 \
+              --save-interval 25 \
+              --logging-steps 1 \
+              --dataset-size 3000 \
+              --max-turns 6 \
+              --temperature 0.8 \
+              --report-to none
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+  volumes:
+    - name: shmem
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+    - name: fsx-storage
+      persistentVolumeClaim:
+        claimName: ${FSX_PVC}
