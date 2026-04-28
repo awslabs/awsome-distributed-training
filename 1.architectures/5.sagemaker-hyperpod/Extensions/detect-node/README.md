@@ -13,18 +13,11 @@ compute nodes.
 
 ### Why Not Detect via Slurm Services?
 
-A common approach is to check which Slurm daemon is running (`slurmctld` for
-controller, `slurmd` for compute/login). This is unreliable because:
-
-- **OnInitComplete runs in parallel with Slurm startup.** The Slurm daemons
-  may not be started yet when your script runs, especially during scale-up.
-- **slurmd can flap during scale-up.** New compute nodes may briefly start
-  `slurmd`, then restart it as the node joins the cluster. A script that
-  checks `systemctl is-active slurmd` can see it active one moment and
-  inactive the next.
-- **sinfo depends on the controller.** Using `sinfo` to distinguish compute
-  from login nodes requires the controller to be reachable, which isn't
-  guaranteed during cluster creation when all nodes start simultaneously.
+Detecting node type by checking Slurm daemons (e.g., `systemctl is-active
+slurmctld`) is unreliable because `OnInitComplete` and lifecycle scripts can
+run before or in parallel with Slurm service startup. Using the platform
+config files is the recommended approach — it is deterministic, instant, and
+has no dependency on Slurm or any other service being ready.
 
 ### The Reliable Method: Platform Config Files
 
