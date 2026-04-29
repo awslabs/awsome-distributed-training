@@ -1,13 +1,13 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
-ARG CUDA_VERSION=12.9.1
+ARG CUDA_VERSION=13.0.2
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
-ARG GDRCOPY_VERSION=v2.5.1
-ARG EFA_INSTALLER_VERSION=1.47.0
+ARG GDRCOPY_VERSION=v2.5.2
+ARG EFA_INSTALLER_VERSION=1.48.0
 ARG AWS_OFI_NCCL_VERSION="" # Kept for backward compatibility - value is ignored as plugin is bundled with EFA
-ARG NCCL_VERSION=v2.29.3-1
-ARG NCCL_TESTS_VERSION=v2.17.9
+ARG NCCL_VERSION=v2.30.4-1
+ARG NCCL_TESTS_VERSION=v2.18.3
 
 RUN apt-get update -y && apt-get upgrade -y
 RUN apt-get remove -y --allow-change-held-packages \
@@ -93,7 +93,7 @@ RUN echo "Verifying AWS OFI NCCL plugin installation..." && \
 RUN git clone -b ${NCCL_VERSION} https://github.com/NVIDIA/nccl.git  /opt/nccl \
     && cd /opt/nccl \
     && make -j $(nproc) src.build CUDA_HOME=/usr/local/cuda \
-    NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_100,code=sm_100"
+    NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_103,code=sm_103"
 
 ###################################################
 ## Install NCCL-tests
@@ -104,7 +104,7 @@ RUN git clone -b ${NCCL_TESTS_VERSION} https://github.com/NVIDIA/nccl-tests.git 
     MPI_HOME=/opt/amazon/openmpi/ \
     CUDA_HOME=/usr/local/cuda \
     NCCL_HOME=/opt/nccl/build \
-    NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_100,code=sm_100"
+    NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_103,code=sm_103"
 
 RUN rm -rf /var/lib/apt/lists/*
 
