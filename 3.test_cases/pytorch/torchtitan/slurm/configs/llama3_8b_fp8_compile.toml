@@ -21,7 +21,7 @@ save_tb_folder = "tb"
 name = "llama3"
 flavor = "8B"
 hf_assets_path = "./assets/hf/Llama-3.1-8B"
-converters = ["float8"]
+converters = ["quantize.linear.float8"]
 
 [optimizer]
 name = "AdamW"
