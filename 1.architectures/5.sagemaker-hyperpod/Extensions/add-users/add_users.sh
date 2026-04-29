@@ -91,11 +91,11 @@ detect_shared_filesystem() {
 }
 
 # ---------------------------------------------------------------------------
-# Determine user source: shared_users.txt (legacy) or config.yaml
+# Determine user source: shared_users.txt (legacy) or shared_users.yaml
 #
-# Priority: shared_users.txt takes precedence over config.yaml for backward
-# compatibility with the base lifecycle scripts. If shared_users.txt exists
-# (even if empty), config.yaml is ignored.
+# Priority: shared_users.txt takes precedence over shared_users.yaml for
+# backward compatibility with the base lifecycle scripts. If shared_users.txt
+# exists (even if empty), shared_users.yaml is ignored.
 # ---------------------------------------------------------------------------
 SHARED_USERS_FILE="$SCRIPT_DIR/shared_users.txt"
 CONFIG_FILE="$SCRIPT_DIR/shared_users.yaml"
