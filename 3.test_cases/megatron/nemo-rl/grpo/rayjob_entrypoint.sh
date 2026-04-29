@@ -8,7 +8,7 @@ echo "NeMo RL GRPO Training Entrypoint"
 echo "=============================================="
 
 # --- Configurable paths (override via environment variables) ---
-SHARED_DIR="${SHARED_DIR:-/shared/nvrx-demo}"
+SHARED_DIR="${SHARED_DIR:-/fsx}"
 GRPO_MODEL="${GRPO_MODEL:-nvidia/Nemotron-Mini-4B-Instruct}"
 GRPO_MAX_STEPS="${GRPO_MAX_STEPS:-50}"
 GRPO_NUM_NODES="${GRPO_NUM_NODES:-2}"
