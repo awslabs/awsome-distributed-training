@@ -74,6 +74,17 @@ ENV PATH /opt/gdrcopy/bin:$PATH
 
 #################################################
 ## Install EFA installer
+##
+## The base nemo:26.02 image ships partial EFA components (efa-profile,
+## libfabric1-aws, openmpi*-aws, libnccl-ofi-ngc-v2). Their dpkg state
+## doesn't match the on-disk files, so the EFA installer's verify step
+## refuses to upgrade with "ld.so.conf.d/000_efa.conf is installed by
+## efa-profile package but doesn't exist". Purge them first.
+RUN dpkg --purge --force-all \
+    efa-profile libfabric1-aws libfabric1-aws-dbg \
+    openmpi40-aws openmpi50-aws \
+    libnccl-ofi-ngc-v2 libnccl-ofi-ngc-v2-dbgsym 2>/dev/null || true
+
 RUN cd $HOME \
     && curl -O https://efa-installer.amazonaws.com/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz \
     && tar -xf $HOME/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz \
