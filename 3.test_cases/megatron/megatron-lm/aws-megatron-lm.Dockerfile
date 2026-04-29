@@ -1,13 +1,18 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-FROM nvcr.io/nvidia/pytorch:25.06-py3
+FROM nvcr.io/nvidia/pytorch:26.02-py3
 
-ARG GDRCOPY_VERSION=v2.5.1
-ARG EFA_INSTALLER_VERSION=1.43.2
-#
-ARG TRANSFORMERS_VERSION=4.52.4
-ARG MEGATRON_LM_VERSION=core_v0.12.1
+ARG GDRCOPY_VERSION=v2.5.2
+ARG EFA_INSTALLER_VERSION=1.48.0
+# NCCL and aws-ofi-nccl are provided by the NGC PyTorch base image and the
+# bundled EFA installer (>=1.47.0). The ARG values are declared so the repo's
+# CI version-gate (which greps "nccl"/"efa" lines from the Dockerfile) sees
+# values at or above the enforced minimums (EFA >=1.47.0, NCCL >=2.28).
+ARG NCCL_VERSION=v2.30.4-1
+ARG AWS_OFI_NCCL_VERSION=v1.19.0
+ARG TRANSFORMERS_VERSION=4.57.6
+ARG MEGATRON_LM_VERSION=core_v0.17.0
 
 ARG OPEN_MPI_PATH=/opt/amazon/openmpi
 
