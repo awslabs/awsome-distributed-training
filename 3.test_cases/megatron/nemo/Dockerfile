@@ -55,7 +55,10 @@ RUN rm -rf /root/.ssh/ \
  && cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \
  && printf "Host *\n  StrictHostKeyChecking no\n" >> /root/.ssh/config
 
-ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/amazon/ofi-nccl/lib:$LD_LIBRARY_PATH
+# NGC images install the OFI NCCL plugin via the libnccl-ofi-ngc-v2 package
+# from the EFA installer, which lands at /opt/amazon/aws-ofi-nccl/ rather than
+# /opt/amazon/ofi-nccl/ used on stock Ubuntu. Cover both for portability.
+ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/amazon/aws-ofi-nccl/lib:/opt/amazon/ofi-nccl/lib:$LD_LIBRARY_PATH
 ENV PATH=/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
 
 #################################################
@@ -145,5 +148,9 @@ ENV OMPI_MCA_pml=^cm,ucx            \
 ## Turn off PMIx Error https://github.com/open-mpi/ompi/issues/7516
 ENV PMIX_MCA_gds=hash
 
-# Debug: Verify OFI NCCL and OPENMPI installation
-RUN ls -la /opt/amazon/efa/lib/ && ls -la /opt/amazon/ofi-nccl/lib/ && ls -la /opt/amazon/openmpi/lib/
+# Verify EFA / OFI NCCL / OpenMPI installation. NGC's libnccl-ofi-ngc-v2
+# package installs to /opt/amazon/aws-ofi-nccl, while stock EFA installs
+# to /opt/amazon/ofi-nccl — accept either.
+RUN ls -la /opt/amazon/efa/lib/ \
+ && (ls -la /opt/amazon/aws-ofi-nccl/lib/ || ls -la /opt/amazon/ofi-nccl/lib/) \
+ && ls -la /opt/amazon/openmpi/lib/
