@@ -1,10 +1,12 @@
-FROM nvcr.io/nvidia/nemo:25.07.00
-ARG GDRCOPY_VERSION=v2.5
-ARG EFA_INSTALLER_VERSION=1.47.0
-# ARG AWS_OFI_NCCL_VERSION=v1.13.2-aws    # OFI NCCL already packaged into EFA installation (/opt/amazon/ofi-nccl) cf. https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-changelog.html
-ARG NCCL_VERSION=v2.27.7-1
-ARG NCCL_TESTS_VERSION=v2.16.9
-ARG TRANSFORMERS_VERSION=4.56.1
+FROM nvcr.io/nvidia/nemo:26.02
+ARG GDRCOPY_VERSION=v2.5.2
+ARG EFA_INSTALLER_VERSION=1.48.0
+# AWS OFI NCCL is bundled into the EFA installation (/opt/amazon/ofi-nccl) for
+# EFA installer >=1.47.0. Cf. https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-changelog.html
+ARG AWS_OFI_NCCL_VERSION=v1.19.0
+ARG NCCL_VERSION=v2.30.4-1
+ARG NCCL_TESTS_VERSION=v2.18.3
+ARG TRANSFORMERS_VERSION=4.57.6
 
 
 ARG OPEN_MPI_PATH=/opt/amazon/openmpi    # Open MPI already packaged into EFA installation (/opt/amazon/openmpi)
