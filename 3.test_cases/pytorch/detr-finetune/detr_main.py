@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 """DETR-ResNet50 Object Detection Training Script
 
 Fine-tunes a DETR-ResNet50 model from Qualcomm AI Hub on a custom object detection
@@ -621,17 +624,18 @@ def save_checkpoint(state, is_best, filename=None):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     if "state_dict" in state:
+        # state_dict keeps DDP/wrapper prefixes for direct resume (standard convention).
+        # inference_state_dict strips prefixes for standalone export/inference.
         original_state_dict = state["state_dict"]
         cleaned_state_dict = {}
-
         for key, value in original_state_dict.items():
             new_key = key.replace("module.", "")  # Remove DDP prefix
             new_key = new_key.replace("qai_model.", "")  # Remove wrapper prefix
             cleaned_state_dict[new_key] = value
 
         state_to_save = state.copy()
-        state_to_save["state_dict"] = cleaned_state_dict
-        state_to_save["original_state_dict"] = original_state_dict
+        state_to_save["state_dict"] = original_state_dict
+        state_to_save["inference_state_dict"] = cleaned_state_dict
 
         torch.save(state_to_save, filename)
     else:
@@ -789,10 +793,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 checkpoint = torch.load(args.resume, map_location=f"cuda:{args.gpu}")
             args.start_epoch = checkpoint["epoch"]
             best_loss = checkpoint.get("best_loss", checkpoint.get("best_map", float("inf")))
-
-            # Prefer original_state_dict (has wrapper prefixes) for training resume
-            state_dict_to_load = checkpoint.get("original_state_dict", checkpoint["state_dict"])
-            model.load_state_dict(state_dict_to_load)
+            model.load_state_dict(checkpoint["state_dict"])
 
             optimizer.load_state_dict(checkpoint["optimizer"])
             scheduler.load_state_dict(checkpoint["scheduler"])
@@ -881,9 +882,8 @@ def main_worker(gpu, ngpus_per_node, args):
         is_best = final_val_loss < best_loss
         best_loss = min(final_val_loss, best_loss)
 
-        if not args.multiprocessing_distributed or (
-            args.multiprocessing_distributed and args.rank % ngpus_per_node == 0
-        ):
+        is_rank_zero = (not args.distributed) or args.rank == 0
+        if is_rank_zero:
             save_checkpoint(
                 {
                     "epoch": epoch + 1,

@@ -76,7 +76,7 @@ spec:
               - name: NCCL_DEBUG
                 value: "INFO"
               - name: NCCL_SOCKET_IFNAME
-                value: "eth0"
+                value: "^lo"
               - name: NCCL_SHM_USE_CUDA_MEMCPY
                 value: "1"
               - name: NCCL_PROTO
