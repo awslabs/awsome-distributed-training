@@ -40,8 +40,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y --allow-unauthenticated \
     libtool \
     openssh-client \
     openssh-server \
-    vim \
-    && apt autoremove -y
+    vim
+# NOTE: deliberately no `apt autoremove` here. The nemo:26.02 base image
+# ships several CUDA add-on libraries (libcusparseLt0, libcudnn-frontend,
+# etc.) that apt sees as orphaned because no installed Debian package
+# Depends: them — they're loaded via dlopen by torch / transformer_engine
+# at runtime. autoremove deletes them and torch.import then crashes with
+# `libcusparseLt.so.0: cannot open shared object file`.
 
 RUN mkdir -p /var/run/sshd && \
     sed -i 's/[ #]\(.*StrictHostKeyChecking \).*/ \1no/g' /etc/ssh/ssh_config && \
