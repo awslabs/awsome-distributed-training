@@ -1,10 +1,12 @@
-FROM nvcr.io/nvidia/nemo:25.07.00
-ARG GDRCOPY_VERSION=v2.5
-ARG EFA_INSTALLER_VERSION=1.47.0
-# ARG AWS_OFI_NCCL_VERSION=v1.13.2-aws    # OFI NCCL already packaged into EFA installation (/opt/amazon/ofi-nccl) cf. https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-changelog.html
-ARG NCCL_VERSION=v2.27.7-1
-ARG NCCL_TESTS_VERSION=v2.16.9
-ARG TRANSFORMERS_VERSION=4.56.1
+FROM nvcr.io/nvidia/nemo:26.02
+ARG GDRCOPY_VERSION=v2.5.2
+ARG EFA_INSTALLER_VERSION=1.48.0
+# AWS OFI NCCL is bundled into the EFA installation (/opt/amazon/ofi-nccl) for
+# EFA installer >=1.47.0. Cf. https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-changelog.html
+ARG AWS_OFI_NCCL_VERSION=v1.19.0
+ARG NCCL_VERSION=v2.30.4-1
+ARG NCCL_TESTS_VERSION=v2.18.3
+ARG TRANSFORMERS_VERSION=4.57.6
 
 
 ARG OPEN_MPI_PATH=/opt/amazon/openmpi    # Open MPI already packaged into EFA installation (/opt/amazon/openmpi)
@@ -38,8 +40,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y --allow-unauthenticated \
     libtool \
     openssh-client \
     openssh-server \
-    vim \
-    && apt autoremove -y
+    vim
+# NOTE: deliberately no `apt autoremove` here. The nemo:26.02 base image
+# ships several CUDA add-on libraries (libcusparseLt0, libcudnn-frontend,
+# etc.) that apt sees as orphaned because no installed Debian package
+# Depends: them — they're loaded via dlopen by torch / transformer_engine
+# at runtime. autoremove deletes them and torch.import then crashes with
+# `libcusparseLt.so.0: cannot open shared object file`.
 
 RUN mkdir -p /var/run/sshd && \
     sed -i 's/[ #]\(.*StrictHostKeyChecking \).*/ \1no/g' /etc/ssh/ssh_config && \
@@ -53,8 +60,25 @@ RUN rm -rf /root/.ssh/ \
  && cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \
  && printf "Host *\n  StrictHostKeyChecking no\n" >> /root/.ssh/config
 
-ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/amazon/ofi-nccl/lib:$LD_LIBRARY_PATH
-ENV PATH=/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
+# NGC images install the OFI NCCL plugin via the libnccl-ofi-ngc-v2 package
+# from the EFA installer, which lands at /opt/amazon/aws-ofi-nccl/ rather than
+# /opt/amazon/ofi-nccl/ used on stock Ubuntu. Cover both for portability.
+ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/amazon/aws-ofi-nccl/lib:/opt/amazon/ofi-nccl/lib:$LD_LIBRARY_PATH
+# Prepend /opt/venv/bin so every `python`/`pip` resolves to the uv-managed
+# venv where nemo, megatron, nemo_run, etc. live. The nemo:26.02 image's
+# default PATH puts /usr/bin BEFORE /opt/venv/bin, which breaks torchelastic
+# worker spawn: `ft_launcher` finds /usr/bin/python (no nemo_run) instead of
+# /opt/venv/bin/python and crashes with `ModuleNotFoundError: nemo_run`.
+ENV PATH=/opt/venv/bin:/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
+
+# nemo:26.02 ships libcusparseLt0 (libcusparselt0-cuda-13) into the nested
+# /usr/lib/x86_64-linux-gnu/libcusparseLt/13/ directory but does NOT create
+# the libcusparseLt.so.0 SONAME symlink and does NOT add an ld.so.conf.d
+# entry. torch dlopens libcusparseLt.so.0 at import time and crashes:
+#   ImportError: libcusparseLt.so.0: cannot open shared object file
+# Register the dir with ld.so AND let ldconfig create the SONAME symlink.
+RUN echo /usr/lib/x86_64-linux-gnu/libcusparseLt/13 > /etc/ld.so.conf.d/000_libcusparselt.conf \
+ && ldconfig
 
 #################################################
 ## Install NVIDIA GDRCopy
@@ -72,6 +96,17 @@ ENV PATH /opt/gdrcopy/bin:$PATH
 
 #################################################
 ## Install EFA installer
+##
+## The base nemo:26.02 image ships partial EFA components (efa-profile,
+## libfabric1-aws, openmpi*-aws, libnccl-ofi-ngc-v2). Their dpkg state
+## doesn't match the on-disk files, so the EFA installer's verify step
+## refuses to upgrade with "ld.so.conf.d/000_efa.conf is installed by
+## efa-profile package but doesn't exist". Purge them first.
+RUN dpkg --purge --force-all \
+    efa-profile libfabric1-aws libfabric1-aws-dbg \
+    openmpi40-aws openmpi50-aws \
+    libnccl-ofi-ngc-v2 libnccl-ofi-ngc-v2-dbgsym 2>/dev/null || true
+
 RUN cd $HOME \
     && curl -O https://efa-installer.amazonaws.com/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz \
     && tar -xf $HOME/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz \
@@ -132,5 +167,9 @@ ENV OMPI_MCA_pml=^cm,ucx            \
 ## Turn off PMIx Error https://github.com/open-mpi/ompi/issues/7516
 ENV PMIX_MCA_gds=hash
 
-# Debug: Verify OFI NCCL and OPENMPI installation
-RUN ls -la /opt/amazon/efa/lib/ && ls -la /opt/amazon/ofi-nccl/lib/ && ls -la /opt/amazon/openmpi/lib/
+# Verify EFA / OFI NCCL / OpenMPI installation. NGC's libnccl-ofi-ngc-v2
+# package installs to /opt/amazon/aws-ofi-nccl, while stock EFA installs
+# to /opt/amazon/ofi-nccl — accept either.
+RUN ls -la /opt/amazon/efa/lib/ \
+ && (ls -la /opt/amazon/aws-ofi-nccl/lib/ || ls -la /opt/amazon/ofi-nccl/lib/) \
+ && ls -la /opt/amazon/openmpi/lib/
