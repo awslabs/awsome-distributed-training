@@ -17,14 +17,16 @@ pip install "nemo-run==0.9.0"
 # here because all GPU work happens inside the container.
 pip install "torch==2.10.0"
 
-# Megatron-LM pinned to the same release tag the container ships with.
-pip install --no-deps "git+https://github.com/NVIDIA/Megatron-LM.git@core_v0.17.0"
+# Megatron-LM pinned to the same release tag the container ships with
+# (megatron-core 0.16.1 in nvcr.io/nvidia/nemo:26.02). nemo_toolkit 2.7.x
+# imports `megatron.core.inference.model_inference_wrappers.inference_wrapper_config`,
+# which only exists in core_v0.16.x; core_v0.17.0rc0 reorganized that module
+# tree and breaks the nemo import path.
+pip install --no-deps "git+https://github.com/NVIDIA/Megatron-LM.git@core_v0.16.1"
 
 # NeMo Toolkit. PERFORMANCE.md (in this directory's parent) lists 2.5+ as
 # recommended on the NeMo 26.02 container. 2.7.3 is the latest patch in 2.x.
 pip install "nemo_toolkit[all]==2.7.3"
-
-pip install "opencc==1.1.6"
 
 # NVIDIA Resiliency Extension for fault-tolerance plugins used in run.py.
 pip install "nvidia-resiliency-ext==0.4.1"
