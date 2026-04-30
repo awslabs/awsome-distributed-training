@@ -64,7 +64,12 @@ RUN rm -rf /root/.ssh/ \
 # from the EFA installer, which lands at /opt/amazon/aws-ofi-nccl/ rather than
 # /opt/amazon/ofi-nccl/ used on stock Ubuntu. Cover both for portability.
 ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/amazon/aws-ofi-nccl/lib:/opt/amazon/ofi-nccl/lib:$LD_LIBRARY_PATH
-ENV PATH=/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
+# Prepend /opt/venv/bin so every `python`/`pip` resolves to the uv-managed
+# venv where nemo, megatron, nemo_run, etc. live. The nemo:26.02 image's
+# default PATH puts /usr/bin BEFORE /opt/venv/bin, which breaks torchelastic
+# worker spawn: `ft_launcher` finds /usr/bin/python (no nemo_run) instead of
+# /opt/venv/bin/python and crashes with `ModuleNotFoundError: nemo_run`.
+ENV PATH=/opt/venv/bin:/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
 
 # nemo:26.02 ships libcusparseLt0 (libcusparselt0-cuda-13) into the nested
 # /usr/lib/x86_64-linux-gnu/libcusparseLt/13/ directory but does NOT create
