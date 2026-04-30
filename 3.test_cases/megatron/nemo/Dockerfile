@@ -63,7 +63,13 @@ RUN rm -rf /root/.ssh/ \
 # NGC images install the OFI NCCL plugin via the libnccl-ofi-ngc-v2 package
 # from the EFA installer, which lands at /opt/amazon/aws-ofi-nccl/ rather than
 # /opt/amazon/ofi-nccl/ used on stock Ubuntu. Cover both for portability.
-ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/amazon/aws-ofi-nccl/lib:/opt/amazon/ofi-nccl/lib:$LD_LIBRARY_PATH
+#
+# nemo:26.02 also ships libcusparseLt0 in /usr/lib/x86_64-linux-gnu/libcusparseLt/13/
+# (a non-standard nested directory) but doesn't add an /etc/ld.so.conf.d
+# snippet for it. torch dlopens libcusparseLt.so.0 at import time and crashes
+# `ImportError: libcusparseLt.so.0: cannot open shared object file` if the
+# directory isn't on LD_LIBRARY_PATH.
+ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/amazon/aws-ofi-nccl/lib:/opt/amazon/ofi-nccl/lib:/usr/lib/x86_64-linux-gnu/libcusparseLt/13:$LD_LIBRARY_PATH
 ENV PATH=/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
 
 #################################################
