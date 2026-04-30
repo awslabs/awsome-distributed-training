@@ -139,6 +139,16 @@ RUN cd /workspace && git clone --depth 1 --branch ${MEGATRON_LM_VERSION} https:/
     && python3 -m pip install nltk  \
     && python3 -m pip install .
 
+# Pre-build the megatron datasets helpers C++ module. core_v0.17.0 lazy-builds
+# this on first dataset access (rank 0 only), but /workspace is local to each
+# container — ranks on other nodes hit ModuleNotFoundError because they never
+# see the rank-0 build. Baking it into the image avoids the multi-node race.
+RUN cd /workspace/Megatron-LM/megatron/core/datasets \
+    && g++ -O3 -Wall -shared -std=c++17 -fPIC -fdiagnostics-color \
+       -I$(python3 -c 'import sysconfig; print(sysconfig.get_path("include"))') \
+       -I$(python3 -c 'import pybind11; print(pybind11.get_include())') \
+       helpers.cpp -o helpers_cpp$(python3-config --extension-suffix)
+
 ## Set Open MPI variables to exclude network interface and conduit.
 ENV OMPI_MCA_pml=^ucx            \
     OMPI_MCA_btl=tcp,self           \
