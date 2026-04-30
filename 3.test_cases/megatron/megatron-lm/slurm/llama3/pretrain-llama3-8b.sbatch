@@ -110,6 +110,7 @@ srun -l "${ARGS[@]}" python -m torch.distributed.run "${TORCHRUN_ARGS[@]}" /work
         --lr-decay-style cosine \
         --log-interval 1 \
         --eval-iters 0 \
+        --eval-interval 1000 \
         --data-path ${DATA_PATH}/llama3/my-llama3_text_document \
         --tokenizer-type HuggingFaceTokenizer \
         --tokenizer-model meta-llama/Meta-Llama-3-8B \
