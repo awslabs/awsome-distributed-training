@@ -8,7 +8,7 @@ from functools import partial
 from typing import Any, Optional
 from nemo.collections import llm
 from nemo.lightning.run import plugins
-from nemo.collections.nlp.modules.common.tokenizer_utils import get_nmt_tokenizer
+from nemo.collections.common.tokenizers.tokenizer_utils import get_nmt_tokenizer
 from nemo.collections.llm.recipes.callbacks.common import straggler_det_callback
 from nemo.lightning.pytorch.callbacks import PreemptionCallback
 from nemo.lightning.run import plugins
