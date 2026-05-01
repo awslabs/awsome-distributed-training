@@ -17,12 +17,12 @@ pip install "nemo-run==0.9.0"
 # here because all GPU work happens inside the container.
 pip install "torch==2.10.0"
 
-# Megatron-LM pinned to the same release tag the container ships with
-# (megatron-core 0.16.1 in nvcr.io/nvidia/nemo:26.02). nemo_toolkit 2.7.x
-# imports `megatron.core.inference.model_inference_wrappers.inference_wrapper_config`,
-# which only exists in core_v0.16.x; core_v0.17.0rc0 reorganized that module
-# tree and breaks the nemo import path.
-pip install --no-deps "git+https://github.com/NVIDIA/Megatron-LM.git@core_v0.16.1"
+# Megatron-LM pinned to the version that NeMo 2.7.x is API-compatible with
+# (must match MEGATRON_CORE_VERSION in ../Dockerfile). nemo:26.02 ships
+# 0.16.1 alongside NeMo 2.7.1 by mistake — 0.16.x removed kwargs and
+# submodules NeMo 2.7.x still references (see Dockerfile comment for
+# details). 0.15.3 is the latest 0.15.x patch.
+pip install --no-deps "git+https://github.com/NVIDIA/Megatron-LM.git@core_v0.15.3"
 
 # NeMo Toolkit. PERFORMANCE.md (in this directory's parent) lists 2.5+ as
 # recommended on the NeMo 26.02 container. 2.7.3 is the latest patch in 2.x.

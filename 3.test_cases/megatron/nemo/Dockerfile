@@ -7,6 +7,13 @@ ARG AWS_OFI_NCCL_VERSION=v1.19.0
 ARG NCCL_VERSION=v2.30.4-1
 ARG NCCL_TESTS_VERSION=v2.18.3
 ARG TRANSFORMERS_VERSION=4.57.6
+# Pin megatron-core to the version that NeMo 2.7.x is API-compatible with.
+# nemo:26.02 ships megatron-core 0.16.1 at /opt/Megatron-Bridge/3rdparty/Megatron-LM/
+# but bundled NeMo 2.7.1 calls APIs 0.16.x removed (get_megatron_optimizer
+# kwargs no_weight_decay_cond/scale_lr_cond/lr_mult) and imports submodules
+# 0.16.x dropped (megatron.core.dist_checkpointing.strategies.tensorstore).
+# 0.15.3 is the latest 0.15.x release on PyPI / GitHub.
+ARG MEGATRON_CORE_VERSION=core_v0.15.3
 
 
 ARG OPEN_MPI_PATH=/opt/amazon/openmpi    # Open MPI already packaged into EFA installation (/opt/amazon/openmpi)
@@ -79,6 +86,18 @@ ENV PATH=/opt/venv/bin:/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/us
 # Register the dir with ld.so AND let ldconfig create the SONAME symlink.
 RUN echo /usr/lib/x86_64-linux-gnu/libcusparseLt/13 > /etc/ld.so.conf.d/000_libcusparselt.conf \
  && ldconfig
+
+# Pin the bundled megatron-core to MEGATRON_CORE_VERSION (see ARG above for
+# rationale). Replace the in-place 0.16.1 source tree at
+# /opt/Megatron-Bridge/3rdparty/Megatron-LM/megatron/core/ with the 0.15.3
+# release. Pip's site-packages copy is updated by venv.sh on the host; this
+# step covers the copy that runs inside the container.
+RUN git clone -b ${MEGATRON_CORE_VERSION} --depth 1 \
+        https://github.com/NVIDIA/Megatron-LM.git /tmp/megatron-lm \
+ && rm -rf /opt/Megatron-Bridge/3rdparty/Megatron-LM/megatron/core \
+ && cp -r /tmp/megatron-lm/megatron/core \
+        /opt/Megatron-Bridge/3rdparty/Megatron-LM/megatron/ \
+ && rm -rf /tmp/megatron-lm
 
 #################################################
 ## Install NVIDIA GDRCopy
