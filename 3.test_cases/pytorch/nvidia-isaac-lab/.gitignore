@@ -1,0 +1,21 @@
+# Generated manifests
+generated/
+
+# User config (contains account-specific values)
+config.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
