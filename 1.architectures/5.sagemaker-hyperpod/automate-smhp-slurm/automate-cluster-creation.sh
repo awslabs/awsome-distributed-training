@@ -347,18 +347,6 @@ setup_lifecycle_scripts() {
 
     cd awsome-distributed-training/1.architectures/5.sagemaker-hyperpod/LifecycleScripts/
 
-    echo -e "${YELLOW}Are you using Neuron-based instances (Trainium/Inferentia)? (yes/no)${NC}"
-    read -e USING_NEURON
-
-    if [ "$USING_NEURON" == "yes" ]; then
-        echo -e "${BLUE}Enabling Neuron in LCS...${NC}"
-        sed -i.bak 's/enable_update_neuron_sdk = False/enable_update_neuron_sdk = True/' base-config/config.py
-        rm base-config/config.py.bak
-        echo -e "${GREEN}✅ Lifecycle Scripts modified successfully! Neuron enabled in config.py${NC}"
-    else
-        echo -e "${BLUE}Continuing with Neuron disabled in LCS...${NC}"
-    fi
-
     # Check if FSx OpenZFS was deployed in the stack
     echo -e "${BLUE}Checking if FSx OpenZFS was deployed in the stack...${NC}"
 

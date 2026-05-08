@@ -1,0 +1,32 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Docker / ECR
+export AWS_REGION=$(aws ec2 describe-availability-zones --output text --query 'AvailabilityZones[0].[RegionName]')
+export ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+export REGISTRY=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/
+export IMAGE=openenv-wordle-grpo
+export TAG=v1.0
+
+# SageMaker HyperPod EKS cluster
+export HYPERPOD_CLUSTER_NAME="<your-hyperpod-cluster-name>"
+export EKS_CLUSTER_NAME="<your-eks-cluster-name>"        # Underlying EKS cluster
+export NAMESPACE="default"                                # Namespace for workloads
+export INSTANCE_TYPE="ml.g6e.12xlarge"                    # 4x NVIDIA L40S (48 GB each)
+                                                          # Also works: ml.g6.12xlarge (4x L4, 24 GB each)
+export NUM_GPU_PER_NODE=4
+export FSX_PVC="fsx-claim"                                # PVC name for FSx for Lustre
+
+# HuggingFace
+export HF_TOKEN="<your-huggingface-token>"
+
+# Training
+export MODEL_NAME="Qwen/Qwen3-1.7B"            # Fits on single L40S with vLLM colocate
+export VLLM_MODE="colocate"                     # "colocate" (1 GPU) or "server" (multi-GPU)
+export NUM_GENERATIONS=2                        # Rollouts per prompt
+export GRADIENT_ACCUMULATION_STEPS=64
+export MAX_STEPS=100
+export LEARNING_RATE=5e-6
+
+# OpenEnv - Wordle environment
+export OPENENV_WORDLE_URL="https://burtenshaw-wordle.hf.space"

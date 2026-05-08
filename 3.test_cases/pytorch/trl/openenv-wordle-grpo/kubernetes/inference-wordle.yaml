@@ -1,0 +1,104 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Inference pod for the trained Wordle GRPO model on SageMaker HyperPod (EKS)
+# Usage: envsubst < inference-wordle.yaml | kubectl apply -f -
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: inference-wordle
+  namespace: ${NAMESPACE}
+  labels:
+    app: inference-wordle
+spec:
+  restartPolicy: Never
+  # HyperPod node-health toleration
+  tolerations:
+    - key: sagemaker.amazonaws.com/node-health-status
+      operator: Exists
+      effect: NoSchedule
+  nodeSelector:
+    node.kubernetes.io/instance-type: $INSTANCE_TYPE
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: sagemaker.amazonaws.com/node-health-status
+                operator: In
+                values:
+                  - Schedulable
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: sagemaker.amazonaws.com/deep-health-check-status
+                operator: In
+                values:
+                  - Passed
+  containers:
+    - name: pytorch
+      image: ${REGISTRY}${IMAGE}:${TAG}
+      imagePullPolicy: Always
+      resources:
+        requests:
+          nvidia.com/gpu: 1
+          memory: "60Gi"
+        limits:
+          nvidia.com/gpu: 1
+          memory: "60Gi"
+      env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_HOME
+        value: "/fsx/hf_cache"
+      command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          set -euo pipefail
+          python -c "
+          import torch
+          from transformers import AutoModelForCausalLM, AutoTokenizer
+          from peft import PeftModel
+
+          model_id = '$MODEL_NAME'
+          checkpoint = '/fsx/checkpoints/wordle-grpo'
+
+          print('Loading base model...')
+          tokenizer = AutoTokenizer.from_pretrained(model_id)
+          model = AutoModelForCausalLM.from_pretrained(
+              model_id,
+              torch_dtype=torch.bfloat16,
+              device_map='auto',
+          )
+          print(f'Base model loaded on {model.device}')
+
+          # Try to load PEFT adapter if available
+          import os
+          adapter_path = os.path.join(checkpoint, 'adapter_model.safetensors')
+          if os.path.exists(adapter_path):
+              print(f'Loading PEFT adapter from {checkpoint}...')
+              model = PeftModel.from_pretrained(model, checkpoint)
+              print('Adapter loaded.')
+
+          print('Model ready. Use kubectl exec to interact.')
+          import time; time.sleep(86400)
+          "
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+  volumes:
+    - name: shmem
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+    - name: fsx-storage
+      persistentVolumeClaim:
+        claimName: ${FSX_PVC}

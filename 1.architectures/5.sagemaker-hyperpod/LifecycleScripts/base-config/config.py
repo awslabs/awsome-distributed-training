@@ -16,9 +16,6 @@ class Config:
     #    - Prevent user to ssh without jobs running on that node
     enable_pam_slurm_adopt = False
 
-    # Set true if you want to update default Neuron SDK version on compute nodes (only applies to trn and inf clusters)
-    enable_update_neuron_sdk = False
-
     # Set true if you want to install SSSD for ActiveDirectory/LDAP integration.
     # You need to configure parameters in SssdConfig as well.
     enable_sssd = False

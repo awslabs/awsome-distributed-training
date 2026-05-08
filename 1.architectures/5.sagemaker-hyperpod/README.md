@@ -377,7 +377,11 @@ sudo bash patching-backup.sh --create <s3-buckup-bucket-path>
 sudo bash patching-backup.sh --restore <s3-buckup-bucket-path>
 ```
 
-### 3.7 Deleting your HyperPod cluster
+### 3.7 Managing Neuron SDK versions on Trainium/Inferentia clusters
+
+For clusters using Trainium or Inferentia instances, the Neuron SDK is pre-installed in the DLAMI and updated via `update-cluster-software`. If your workload requires a specific SDK version, pin the userspace packages in a Python virtual environment rather than modifying host-level packages. See [Neuron SDK Management](./neuron-sdk-management.md) for details.
+
+### 3.8 Deleting your HyperPod cluster
 
 When you're done with your HyperPod cluster, you can delete it down with
 
