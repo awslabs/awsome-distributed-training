@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 """
 Launch a SageMaker Training Job for Isaac Lab.
 Generated from config.yaml -- do not edit directly.

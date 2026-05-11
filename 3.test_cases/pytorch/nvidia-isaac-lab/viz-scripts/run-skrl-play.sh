@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 # Play back the skrl-trained checkpoint from HyperPod training
 # Usage: ./run-skrl-play.sh [checkpoint_path]
 # Default: uses the best_agent.pt from the latest training run
@@ -20,5 +23,5 @@ docker run --shm-size=60g --name isaac-lab --entrypoint bash -it --gpus all \
   -v /home/ubuntu/environment/shared-efs:/workspace/IsaacLab/TrainedModel \
   -e DISPLAY \
   -e "PRIVACY_CONSENT=Y" \
-  isaaclab-batch:latest \
+  ${ISAAC_IMAGE:-isaaclab-sagemaker:5.1.0} \
   -c "cd /workspace/IsaacLab && /isaac-sim/python.sh scripts/reinforcement_learning/skrl/play.py --task=Isaac-Velocity-Rough-H1-v0 --checkpoint $CONTAINER_PATH --num_envs 25"

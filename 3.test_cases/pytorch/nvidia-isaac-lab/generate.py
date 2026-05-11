@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 """
 Generate Kubernetes manifests and launch scripts from config.yaml.
 
@@ -7,6 +9,7 @@ Usage:
     python generate.py --config my.yaml   # uses custom config file
     python generate.py --dry-run          # print what would be generated
 """
+
 import argparse
 import os
 import sys
@@ -69,18 +72,15 @@ def build_vars(cfg: dict) -> dict:
         "TASK": training["task"],
         "MAX_ITERATIONS": str(training["max_iterations"]),
         "FRAMEWORK": training["framework"],
-
         # HyperPod EKS
         "FSX_PVC_NAME": hpod["storage"]["fsx_pvc_name"],
         "NODE_HEALTH_LABEL": hpod["node_health_label"],
         "NODE_HEALTH_VALUE": hpod["node_health_value"],
-
         # FSx storage
         "FSX_FILE_SYSTEM_ID": hpod["fsx"]["file_system_id"],
         "FSX_DNS_NAME": hpod["fsx"]["dns_name"],
         "FSX_MOUNT_NAME": hpod["fsx"]["mount_name"],
         "FSX_CAPACITY": hpod["fsx"]["capacity"],
-
         # Training job
         "JOB_INSTANCE_TYPE": job["instance_type"],
         "JOB_GPUS": str(job["gpus_per_node"]),
@@ -92,7 +92,6 @@ def build_vars(cfg: dict) -> dict:
         "JOB_CPU_REQUEST": job["cpu_request"],
         "JOB_SHM": job["shm_size"],
         "JOB_FSX_LOG_DIR": job["fsx_log_dir"],
-
         # SageMaker Training
         "SM_ROLE_ARN": sm["role_arn"],
         "SM_INSTANCE_TYPE": sm["instance_type"],
@@ -102,15 +101,20 @@ def build_vars(cfg: dict) -> dict:
         "SM_SCRIPTS_S3_URI": sm["scripts_s3_uri"],
         "SM_OUTPUT_S3_PATH": sm["output_s3_path"],
         "SM_NCCL_DEBUG": sm.get("environment", {}).get("NCCL_DEBUG", "INFO"),
-
         # Visualization
-        "VIZ_GPU_INSTANCE_TYPE": cfg.get("viz", {}).get("gpu_instance_type", "ml.g6.12xlarge"),
+        "VIZ_GPU_INSTANCE_TYPE": cfg.get("viz", {}).get(
+            "gpu_instance_type", "ml.g6.12xlarge"
+        ),
         "VIZ_NUM_ENVS": str(cfg.get("viz", {}).get("num_envs", 25)),
         "VIZ_FSX_LOG_DIR": cfg.get("viz", {}).get("fsx_log_dir", job["fsx_log_dir"]),
         # MLflow
         "MLFLOW_TRACKING_URI": cfg.get("mlflow", {}).get("tracking_uri", ""),
-        "MLFLOW_EXPERIMENT_NAME": cfg.get("mlflow", {}).get("experiment_name", "isaaclab-h1"),
-        "SAGEMAKER_MLFLOW_ASSUME_ROLE_ARN": cfg.get("mlflow", {}).get("assume_role_arn", ""),
+        "MLFLOW_EXPERIMENT_NAME": cfg.get("mlflow", {}).get(
+            "experiment_name", "isaaclab-h1"
+        ),
+        "SAGEMAKER_MLFLOW_ASSUME_ROLE_ARN": cfg.get("mlflow", {}).get(
+            "assume_role_arn", ""
+        ),
     }
 
 
@@ -132,8 +136,9 @@ def generate(config_path: str, dry_run: bool = False):
     if not dry_run:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    template_files = sorted(TEMPLATES_DIR.glob("*.yaml.tpl")) + \
-                     sorted(TEMPLATES_DIR.glob("*.py.tpl"))
+    template_files = sorted(TEMPLATES_DIR.glob("*.yaml.tpl")) + sorted(
+        TEMPLATES_DIR.glob("*.py.tpl")
+    )
 
     if not template_files:
         print(f"ERROR: No template files found in {TEMPLATES_DIR}", file=sys.stderr)
@@ -181,14 +186,27 @@ def generate(config_path: str, dry_run: bool = False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate Isaac Lab training manifests from config")
-    parser.add_argument("--config", default="config.yaml", help="Path to config file (default: config.yaml)")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be generated without writing files")
+    parser = argparse.ArgumentParser(
+        description="Generate Isaac Lab training manifests from config"
+    )
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to config file (default: config.yaml)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be generated without writing files",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.config):
         print(f"ERROR: Config file not found: {args.config}", file=sys.stderr)
-        print(f"  Copy config.yaml.example to config.yaml and fill in your values.", file=sys.stderr)
+        print(
+            f"  Copy config.yaml.example to config.yaml and fill in your values.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     generate(args.config, args.dry_run)

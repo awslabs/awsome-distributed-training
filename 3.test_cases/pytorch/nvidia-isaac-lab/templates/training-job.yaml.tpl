@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 # ============================================================================
 # PyTorchJob: Isaac Lab training (${JOB_INSTANCE_TYPE})
 # Generated from config.yaml -- do not edit directly
@@ -59,8 +62,6 @@ spec:
               value: "all"
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: "all"
-            - name: NCCL_SOCKET_IFNAME
-              value: "eth0"
             - name: MLFLOW_TRACKING_URI
               value: "${MLFLOW_TRACKING_URI}"
             - name: MLFLOW_EXPERIMENT_NAME
@@ -140,8 +141,6 @@ spec:
               value: "all"
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: "all"
-            - name: NCCL_SOCKET_IFNAME
-              value: "eth0"
             - name: MLFLOW_TRACKING_URI
               value: "${MLFLOW_TRACKING_URI}"
             - name: MLFLOW_EXPERIMENT_NAME

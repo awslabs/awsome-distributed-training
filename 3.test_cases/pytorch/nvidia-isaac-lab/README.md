@@ -31,7 +31,7 @@ Isaac Sim is built on NVIDIA Omniverse and uses the Omniverse RTX Renderer, whic
 To run distributed Isaac Lab training, you need:
 
 - AWS CLI v2 with configured credentials
-- Python 3.8+ with `pyyaml` and `boto3`
+- Python 3.10+ with `pyyaml` and `boto3`
 - Docker (for building the container image)
 - One of:
   - **HyperPod EKS**: SageMaker HyperPod cluster with [Kubeflow Training Operator](https://github.com/kubeflow/training-operator) and FSx for Lustre

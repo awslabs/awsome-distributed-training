@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 set -e
 
 echo "=== SageMaker Training Job ==="
@@ -7,12 +9,10 @@ echo "Date: $(date)"
 nvidia-smi -L
 
 # === NCCL / Networking Configuration ===
-# g6 instances don't have EFA, so use TCP sockets for inter-node NCCL
-export NCCL_SOCKET_IFNAME=eth0
-export NCCL_IB_DISABLE=1
+# Let NCCL auto-detect the best transport. On EFA-enabled instances (p4d, p5,
+# g6), NCCL will use EFA/RDMA. On instances without EFA, it falls back to TCP.
+# Do NOT set NCCL_SOCKET_IFNAME or NCCL_IB_DISABLE unless debugging.
 export NCCL_DEBUG=INFO
-export NCCL_DEBUG_SUBSYS=ALL
-export NCCL_PROTO=Simple
 
 # Isaac Sim base image sets NVIDIA_VISIBLE_DEVICES=void — override
 export NVIDIA_VISIBLE_DEVICES=all
@@ -26,8 +26,10 @@ export PRIVACY_CONSENT=Y
 export HYDRA_FULL_ERROR=1
 export TORCHELASTIC_ERROR_FILE=/tmp/torch_elastic_error.json
 
-# Serialize Isaac Sim pip env initialization to avoid race condition
-# (FileExistsError on /isaac-sim/kit/data/Kit/Isaac-Sim/4.5/pip3-envs/default)
+# Isaac Sim's internal pip env initialization is not process-safe. When torchrun
+# spawns multiple workers on the same node, they race to create
+# /isaac-sim/kit/data/Kit/Isaac-Sim/4.5/pip3-envs/default. Isaac Sim checks this
+# env var and uses file-based locking to serialize the initialization.
 export ISAACLAB_INIT_LOCK=/tmp/isaaclab_init.lock
 
 echo "=== Network Interfaces ==="
@@ -76,8 +78,6 @@ echo "NNODES=$NNODES"
 echo "NODE_RANK=$NODE_RANK"
 echo "NPROC=$NPROC"
 echo "MASTER_PORT=$MASTER_PORT"
-echo "NCCL_SOCKET_IFNAME=$NCCL_SOCKET_IFNAME"
-echo "NCCL_IB_DISABLE=$NCCL_IB_DISABLE"
 echo "NCCL_DEBUG=$NCCL_DEBUG"
 echo "MAX_ITERATIONS=${MAX_ITERATIONS:-1000}"
 
@@ -104,7 +104,7 @@ cd /workspace/IsaacLab
   --rdzv_endpoint=$MASTER_HOST:$MASTER_PORT \
   scripts/reinforcement_learning/skrl/train.py \
   --distributed \
-  --task=Isaac-Velocity-Rough-H1-v0 \
+  --task=${TASK:-Isaac-Velocity-Rough-H1-v0} \
   --max_iterations=${MAX_ITERATIONS:-1000} \
   --headless
 

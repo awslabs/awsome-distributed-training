@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 FROM nvcr.io/nvidia/isaac-sim:5.1.0
 USER root
 
@@ -60,9 +63,7 @@ RUN /isaac-sim/python.sh -c "import isaaclab; print(f'isaaclab installed: {isaac
 
 # Copy custom AWS entrypoints and scripts
 COPY scripts/sm-train-entrypoint.sh /workspace/IsaacLab/sm-train-entrypoint.sh
-COPY scripts/distributed_run.bash   /workspace/IsaacLab/distributed_run.bash
-RUN chmod +x /workspace/IsaacLab/sm-train-entrypoint.sh \
-             /workspace/IsaacLab/distributed_run.bash
+RUN chmod +x /workspace/IsaacLab/sm-train-entrypoint.sh
 
 ENTRYPOINT [""]
 CMD ["/bin/bash"]
