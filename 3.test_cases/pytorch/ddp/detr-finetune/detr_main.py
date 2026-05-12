@@ -323,21 +323,14 @@ class QAIHubDETRWrapper(nn.Module):
         else:
             outputs = self.qai_model(images)
 
-        # Extract hidden states from transformer decoder output
-        if hasattr(outputs, "last_hidden_state"):
-            hidden_states = outputs.last_hidden_state
-        elif hasattr(outputs, "prediction_logits"):
-            hidden_states = outputs.prediction_logits
-        else:
-            # Try dict-style access
-            hidden_states = outputs.get("logits", outputs.get("pred_logits"))
-
-        if hidden_states is None:
-            raise RuntimeError(
-                "Could not extract hidden states from QAI Hub DETR model. "
-                f"Output type: {type(outputs)}, "
-                f"Available attributes: {[a for a in dir(outputs) if not a.startswith('_')]}"
-            )
+        # Extract hidden states from transformer decoder output.
+        # DetrForObjectDetection returns DetrObjectDetectionOutput with
+        # last_hidden_state as the 256-dim decoder hidden states.
+        hidden_states = outputs.last_hidden_state
+        assert hidden_states.shape[-1] == 256, (
+            f"Expected 256-dim decoder hidden states, got {hidden_states.shape[-1]}. "
+            f"Output type: {type(outputs)}"
+        )
 
         pred_logits = self.class_embed(hidden_states)
         pred_boxes = self.bbox_embed(hidden_states)
@@ -357,7 +350,6 @@ def create_model(num_classes: int):
 
     Args:
         num_classes: Number of target object classes (excluding background).
-        pretrained: Whether to load pre-trained weights.
 
     Returns:
         QAIHubDETRWrapper model instance.

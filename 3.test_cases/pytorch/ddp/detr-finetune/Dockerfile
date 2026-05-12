@@ -1,6 +1,6 @@
 # DETR-ResNet50 Object Detection Training Container
 # Base image: HPC-optimized with pre-configured EFA and NCCL for distributed training
-FROM public.ecr.aws/hpc-cloud/nccl-tests:latest
+FROM public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1

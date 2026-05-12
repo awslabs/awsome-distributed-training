@@ -20,7 +20,7 @@ The guide assumes that you have the following:
 - The dataset uploaded to FSx at `/fsx/data/` (see [data/README.md](../data/README.md)).
 
 We recommend that you setup a Kubernetes cluster using the templates in the
-architectures [directory](../../../../1.architectures).
+architectures [directory](../../../../../1.architectures).
 
 > **Note**: Amazon SageMaker HyperPod EKS clusters come with the Kubeflow
 > Training Operator pre-installed. If you are using a vanilla EKS cluster,

@@ -45,7 +45,7 @@ across multiple GPU nodes connected with EFA networking.
 
 - An Amazon SageMaker HyperPod EKS cluster or Amazon EKS cluster with GPU nodes
   (e.g., `ml.g5.8xlarge`), accessible via `kubectl`. We recommend setting up the
-  cluster using the templates in [1.architectures](../../../1.architectures).
+  cluster using the templates in [1.architectures](../../../../1.architectures).
 - An Amazon FSx for Lustre persistent volume claim (default name: `fsx-pvc`; see
   [kubernetes/README.md](kubernetes/README.md) if your cluster uses a different
   PVC name).
@@ -68,7 +68,7 @@ instructions.
 To run training locally with a single GPU:
 
 ```bash
-python detr_main.py /path/to/data --epochs 50 --batch-size 4 --lr 1e-4 --pretrained --num-classes 2
+python detr_main.py /path/to/data --epochs 50 --batch-size 4 --lr 1e-4 --num-classes 2
 ```
 
 To run distributed training with `torchrun`:
@@ -78,7 +78,6 @@ torchrun --nproc_per_node=1 --nnodes=2 detr_main.py /path/to/data \
     --epochs 50 \
     --batch-size 4 \
     --lr 1e-4 \
-    --pretrained \
     --num-classes 2
 ```
 
@@ -132,7 +131,7 @@ internet access. The model is then wrapped with custom detection heads
 | Batch Size | 4 per GPU | Optimized for DETR memory requirements |
 | Image Size | 800x800 | DETR standard input resolution |
 | Loss | CrossEntropy + 5x L1 bbox | Classification + weighted bbox regression |
-| Augmentation | HFlip, ColorJitter | Applied during training only |
+| Augmentation | ColorJitter | HFlip omitted -- standard transform doesn't flip box coords |
 | Evaluation | torchmetrics mAP | COCO-style mean average precision |
 
 ### Distributed Training

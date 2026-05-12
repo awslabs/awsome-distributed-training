@@ -103,12 +103,12 @@ spec:
                   echo "Starting DETR-ResNet50 fine-tuning..."
 
                   # Setup checkpoint directory
-                  if [ -w "/fsx/checkpoint" ]; then
+                  if [ -d "/fsx" ]; then
                     export CHECKPOINT_DIR="/fsx/checkpoint"
                   else
                     export CHECKPOINT_DIR="/workspace/checkpoints"
-                    mkdir -p ${CHECKPOINT_DIR}
                   fi
+                  mkdir -p "${CHECKPOINT_DIR}"
 
                   # Build resume flag if a checkpoint exists from a previous run
                   RESUME_FLAG=""
@@ -122,7 +122,7 @@ spec:
 
                   echo "Starting DETR object detection training..."
                   python3 -m torch.distributed.run \
-                    --nproc_per_node=1 \
+                    --nproc_per_node=${NPROC_PER_NODE:-1} \
                     --nnodes=$NUM_NODES \
                     --node_rank=${RANK:-0} \
                     --master_addr=${MASTER_ADDR:-localhost} \
