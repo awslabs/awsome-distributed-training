@@ -95,6 +95,22 @@ fi
 echo "=== Starting Isaac Lab H1 Training ==="
 cd /workspace/IsaacLab
 
+# Redirect skrl's log/checkpoint directory to /opt/ml/checkpoints so SageMaker
+# syncs checkpoints to S3 continuously during training.  On a resumed job,
+# SageMaker will have already restored the previous checkpoints into that path.
+mkdir -p /opt/ml/checkpoints
+ln -s /opt/ml/checkpoints /workspace/IsaacLab/logs
+
+# Auto-resume: find the latest checkpoint restored by SageMaker from a previous run
+LATEST_CKPT=$(find /opt/ml/checkpoints -name "best_agent.pt" -printf "%T@ %p\n" 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2)
+if [ -n "$LATEST_CKPT" ]; then
+  echo "=== RESUMING from checkpoint: $LATEST_CKPT ==="
+  RESUME_FLAG="--checkpoint $LATEST_CKPT"
+else
+  echo "=== Starting fresh (no checkpoint found) ==="
+  RESUME_FLAG=""
+fi
+
 /isaac-sim/python.sh -m torch.distributed.run \
   --nproc_per_node=$NPROC \
   --nnodes=$NNODES \
@@ -106,7 +122,8 @@ cd /workspace/IsaacLab
   --distributed \
   --task=${TASK:-Isaac-Velocity-Rough-H1-v0} \
   --max_iterations=${MAX_ITERATIONS:-1000} \
-  --headless
+  --headless \
+  $RESUME_FLAG
 
 TRAIN_EXIT=$?
 echo "=== Training Exit Code: $TRAIN_EXIT ==="

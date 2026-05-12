@@ -79,6 +79,8 @@ sagemaker_training:
   # S3 paths (derived from s3.bucket if left empty)
   scripts_s3_uri: ""              # e.g. "s3://bucket/scripts/sm-train-entrypoint.sh"
   output_s3_path: ""              # e.g. "s3://bucket/sm-training-output/"
+  checkpoint_s3_path: ""          # e.g. "s3://bucket/sm-training-checkpoints/" — enables mid-training S3 sync and auto-resume
+  checkpoint_prefix: ""           # e.g. "h1-rough-v1" — change per experiment to avoid accidental resume from a different run
 
   environment:
     NCCL_DEBUG: "INFO"

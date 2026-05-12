@@ -52,6 +52,10 @@ def load_config(config_path: str) -> dict:
         sm["scripts_s3_uri"] = f"s3://{bucket}/scripts/sm-train-entrypoint.sh"
     if not sm.get("output_s3_path"):
         sm["output_s3_path"] = f"s3://{bucket}/sm-training-output/"
+    if not sm.get("checkpoint_s3_path"):
+        sm["checkpoint_s3_path"] = f"s3://{bucket}/sm-training-checkpoints/"
+    prefix = sm.get("checkpoint_prefix", "default")
+    sm["_checkpoint_s3_uri"] = sm["checkpoint_s3_path"].rstrip("/") + "/" + prefix + "/"
 
     return cfg
 
@@ -100,6 +104,7 @@ def build_vars(cfg: dict) -> dict:
         "SM_MAX_RUNTIME": str(sm["max_runtime_seconds"]),
         "SM_SCRIPTS_S3_URI": sm["scripts_s3_uri"],
         "SM_OUTPUT_S3_PATH": sm["output_s3_path"],
+        "SM_CHECKPOINT_S3_PATH": sm["_checkpoint_s3_uri"],
         "SM_NCCL_DEBUG": sm.get("environment", {}).get("NCCL_DEBUG", "INFO"),
         # Visualization
         "VIZ_GPU_INSTANCE_TYPE": cfg.get("viz", {}).get(

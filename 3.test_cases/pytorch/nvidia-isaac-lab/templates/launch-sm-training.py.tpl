@@ -28,6 +28,7 @@ def launch(iterations: int = ${MAX_ITERATIONS}, dry_run: bool = False):
     role_arn = "${SM_ROLE_ARN}"
     scripts_s3 = "${SM_SCRIPTS_S3_URI}"
     output_s3 = "${SM_OUTPUT_S3_PATH}"
+    checkpoint_s3 = "${SM_CHECKPOINT_S3_PATH}"
     instance_type = "${SM_INSTANCE_TYPE}"
     instance_count = ${SM_INSTANCE_COUNT}
     volume_size = ${SM_VOLUME_SIZE_GB}
@@ -60,6 +61,10 @@ def launch(iterations: int = ${MAX_ITERATIONS}, dry_run: bool = False):
             }
         ],
         "OutputDataConfig": {"S3OutputPath": output_s3},
+        "CheckpointConfig": {
+            "S3Uri": checkpoint_s3,
+            "LocalPath": "/opt/ml/checkpoints",
+        },
         "ResourceConfig": {
             "InstanceType": instance_type,
             "InstanceCount": instance_count,
