@@ -75,9 +75,11 @@ resource "aws_iam_role_policy" "cilium_eni" {
         "ec2:DescribeSubnets",
         "ec2:DescribeSecurityGroups",
         "ec2:DescribeVpcs",
+        "ec2:DescribeRouteTables",
         "ec2:AssignPrivateIpAddresses",
         "ec2:UnassignPrivateIpAddresses",
         "ec2:ModifyNetworkInterfaceAttribute",
+        "ec2:CreateTags",
       ]
       Resource = "*"
     }]

@@ -880,7 +880,7 @@ variable "enable_cilium" {
 }
 
 variable "cilium_mode" {
-  description = "Cilium operating mode: overlay (VXLAN tunnel), eni (native ENI routing), chaining (policy-only on top of VPC CNI), or custom (user provides all Helm values via cilium_helm_values)."
+  description = "Cilium operating mode: overlay (VXLAN tunnel), eni (native ENI routing), chaining (policy-only on top of VPC CNI), or custom (user provides all Helm values via cilium_helm_values). NOTE: eni mode is incompatible with HyperPod — SageMaker-managed instances are not visible in the EC2 API, so the Cilium operator cannot manage ENIs directly. Use overlay or chaining mode with HyperPod."
   type        = string
   default     = "overlay"
   validation {

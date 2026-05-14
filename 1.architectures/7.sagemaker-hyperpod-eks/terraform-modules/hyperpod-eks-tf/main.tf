@@ -122,6 +122,13 @@ module "eks_cluster" {
   skip_vpc_cni            = local.skip_vpc_cni
 }
 
+check "cilium_eni_hyperpod_incompatible" {
+  assert {
+    condition     = !(var.enable_cilium && var.cilium_mode == "eni" && var.create_hyperpod_module)
+    error_message = "Cilium ENI mode is incompatible with HyperPod. SageMaker-managed instances are not visible in the EC2 API, so the Cilium operator cannot manage ENIs. Use overlay or chaining mode instead."
+  }
+}
+
 module "cilium" {
   count  = local.create_cilium ? 1 : 0
   source = "./modules/cilium"
