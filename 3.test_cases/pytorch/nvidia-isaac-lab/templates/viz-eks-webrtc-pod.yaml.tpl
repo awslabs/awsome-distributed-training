@@ -18,8 +18,9 @@ spec:
     command: ["/bin/bash", "-c"]
     args:
     - |
-      # Note: best_agent.pt is the default checkpoint name for the skrl framework.
-      # For other frameworks (rsl_rl, rl_games, sb3), adjust the filename pattern.
+      # This viz pod only supports framework: skrl. If you change training.framework
+      # in config.yaml, you must also update the checkpoint glob and play.py path below
+      # to match the target framework's conventions before regenerating.
       CKPT=$(find ${VIZ_FSX_LOG_DIR} -name best_agent.pt -printf "%T@ %p\n" | sort -n | tail -1 | cut -d' ' -f2)
       echo "Using checkpoint: $CKPT"
       exec /isaac-sim/python.sh scripts/reinforcement_learning/skrl/play.py \
