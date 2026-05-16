@@ -459,7 +459,7 @@ Scheduling:
           Efa:
             Enabled: true                # single-AZ → EFA OK
           CapacityReservationTarget:
-            CapacityReservationId: cr-0d11c4b5795ff089d  # 4× g6.48xlarge in us-east-1a
+            CapacityReservationId: <your-odcr-id>  # e.g. cr-0123abcd... — must be in the same AZ as Networking.SubnetIds
       CustomActions:
         OnNodeConfigured:
           Script: s3://${S3_BUCKET}/create-users.sh
