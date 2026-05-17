@@ -105,7 +105,7 @@ flowchart LR
             GPU["Compute fleet<br/>2× g6.48xlarge<br/>(EFA, 8× L4 each)"]
             DB[("Aurora Serverless v2<br/>MySQL 8.0<br/>TLS required")]
             FSXL["FSx Lustre /fsx<br/>1.2 TB, P2 125 MB/s/TiB"]
-            FSXZ["FSx OpenZFS /home<br/>256 GB, HA-2 160 MB/s"]
+            FSXZ["FSx OpenZFS /home<br/>256 GB, Multi-AZ 160 MB/s"]
         end
     end
     SM["Secrets Manager<br/>(DB password)"]
@@ -137,23 +137,23 @@ A few details worth flagging up front:
 - **The cluster fleet only ever talks to `slurmctld`** on the head node, via
   Slurm's own RPC. The DB is never on the compute path.
 
-There's one wrinkle the source template doesn't currently document: Aurora's
-`DBSubnetGroup` requires subnets in **at least two different availability
-zones**, but the repo's
-[`parallelcluster-prerequisites.yaml`](https://github.com/awslabs/awsome-distributed-ai/blob/main/1.architectures/2.aws-parallelcluster/infra-templates/parallelcluster-prerequisites.yaml)
-creates exactly one private subnet, in a single AZ specified by the
-`PrimarySubnetAZ` parameter. We'll work around that with one extra
-`aws ec2 create-subnet` call below.
+The prereqs template provisions **two private subnets** in different
+AZs (specified by `PrimarySubnetAZ` and `SecondarySubnetAZ`), which the
+accounting-DB template will consume directly for the Aurora
+`DBSubnetGroup`. The same two subnets also back the Multi-AZ FSx OpenZFS
+file system that serves `/home`, with the HA pair split across them for
+cross-AZ failover.
 
 ## Provision the foundation
 
-We're going to build this in three CloudFormation layers plus one S3 bucket:
+We'll build this in two CloudFormation layers plus one S3 bucket:
 
-1. **Prereqs**: VPC, NAT, security groups, FSx Lustre, FSx OpenZFS
-2. **Manual fix**: a second private subnet in a different AZ (for Aurora)
-3. **Accounting DB**: Aurora Serverless v2 + secret + client/server SGs
-4. **S3 bucket**: home for the `create-users.sh` post-install script
-5. **ParallelCluster**: head node + a single GPU queue, wired to the DB
+1. **Prereqs**: VPC with two private subnets in different AZs, NAT, security
+   groups, FSx Lustre (`/fsx`), FSx OpenZFS Multi-AZ (`/home`)
+2. **Accounting DB**: Aurora Serverless v2 + secret + client/server SGs,
+   consuming both subnets from the prereqs stack
+3. **S3 bucket**: home for the `create-users.sh` post-install script
+4. **ParallelCluster**: head node + a single GPU queue, wired to the DB
 
 ### Pin the AWS environment
 
@@ -170,76 +170,47 @@ We'll use `us-east-1` throughout because `g6.48xlarge` is broadly available
 there, and the region has six AZs to pick from when capacity is tight in
 your preferred AZ.
 
-> **AZ caveat for FSx OpenZFS** — when this walkthrough was first run, the
-> prereqs template used `DeploymentType: SINGLE_AZ_HA_1` for `/home`, which
-> [is not offered in many regions](https://docs.aws.amazon.com/fsx/latest/OpenZFSGuide/available-aws-regions.html)
-> — including `us-east-1`, `us-east-2`, `us-west-2`, `eu-central-1`,
-> `eu-west-1`, `ap-northeast-1`, `ap-southeast-1`/`2`, `ap-south-1`, and
-> `ca-central-1`. In `us-east-1` we saw the create fail with:
->
-> ```
-> The file system creation request failed because OpenZFS file systems with
-> the provided deployment type and storage type are not available in the
-> requested Availability Zones
-> ```
->
-> [`PR #1100`](https://github.com/awslabs/awsome-distributed-ai/pull/1100)
-> ([issue #1097](https://github.com/awslabs/awsome-distributed-ai/issues/1097))
-> flips the default to `SINGLE_AZ_HA_2`, which uses gen-2 hardware and is
-> available in every region where HA_1 was failing. If you're running this
-> post before that PR has merged, fork the template with a one-line patch:
->
-> ```bash
-> sed 's/DeploymentType: SINGLE_AZ_HA_1/DeploymentType: SINGLE_AZ_HA_2/' \
->   1.architectures/2.aws-parallelcluster/infra-templates/parallelcluster-prerequisites.yaml \
->   > parallelcluster-prerequisites-ha2.yaml
-> ```
->
-> HA_2's throughput minimum is 160 MB/s (vs HA_1's 64 MB/s), and HA_2's
-> valid set is discrete: `160, 320, 640, 1280, 2560, 3840, 5120, 7680,
-> 10240`. Pick a value from that set when overriding `HomeThroughput`. The
-> per-MB/s price is also different; see the
-> [FSx OpenZFS pricing page](https://aws.amazon.com/fsx/openzfs/pricing/).
-
 ### Step 1 — Prereqs stack
 
 The repo's
 [`parallelcluster-prerequisites.yaml`](https://github.com/awslabs/awsome-distributed-ai/blob/main/1.architectures/2.aws-parallelcluster/infra-templates/parallelcluster-prerequisites.yaml)
-emits everything we need: a VPC with `10.0.0.0/16` (public) and `10.1.0.0/16`
-(private) CIDR ranges, an Internet Gateway, a NAT Gateway, an S3 VPC
-endpoint, an EFA-friendly all-to-all security group, plus FSx Lustre (for
-`/fsx`) and FSx OpenZFS (for `/home`).
+emits everything we need: a VPC with `10.0.0.0/16` (public) and
+`10.1.0.0/16` (private) CIDR ranges, **two private subnets in different
+AZs** (`10.1.0.0/17` and `10.1.128.0/17`), an Internet Gateway, a NAT
+Gateway, an S3 VPC endpoint, an EFA-friendly all-to-all security group,
+plus FSx Lustre (for `/fsx`) and **Multi-AZ FSx OpenZFS** (for `/home`).
+The Multi-AZ default means the template works in every region per the
+[FSx OpenZFS availability table](https://docs.aws.amazon.com/fsx/latest/OpenZFSGuide/available-aws-regions.html),
+including the regions where `SINGLE_AZ_HA_1` / `HA_2` aren't offered.
 
-Two parameter notes:
+One parameter note worth calling out:
 
-- `PerUnitStorageThroughput` defaults to **250 MB/s/TiB**, which is fine for
-  real training but doubles the per-GB-month cost over the **125 MB/s/TiB**
-  minimum tier. For a QoS-walkthrough cluster we don't need the throughput,
-  so we knock it down.
-- `HomeThroughput` (the FSx OpenZFS provisioned throughput) defaults to
-  **512 MB/s**. That's badly oversized for shared home directories on a
-  3-user demo cluster, and FSx OpenZFS prices throughput aggressively. Drop
-  it to **160 MB/s** — the minimum value for the `SINGLE_AZ_HA_2`
-  deployment type we use below. (Watch for this gotcha: the
-  `HomeThroughput` parameter has no `AllowedValues` constraint in the
-  template, and FSx accepts only a discrete set of values that *differs by
-  deployment type*. Pass a value not in the set — e.g. `512` against HA_2
-  — and FSx rejects with a `BadRequest` from the API rather than from
-  CloudFormation itself, sending the stack straight to `ROLLBACK_COMPLETE`.)
+- `PerUnitStorageThroughput` (FSx Lustre) defaults to **250 MB/s/TiB**,
+  which is fine for real training but doubles the per-GB-month cost over
+  the **125 MB/s/TiB** minimum tier. For a QoS-walkthrough cluster we
+  don't need the throughput, so we knock it down.
 
-These two knobs cut storage cost from ~$1.70/hr to ~$0.55/hr.
+The template's `HomeThroughput` default is already **160 MB/s** (the
+minimum valid throughput for Multi-AZ FSx OpenZFS) and has an
+`AllowedValues` constraint, so misconfigurations fail at CFN parameter-
+validation time instead of mid-stack inside the FSx API. The
+`SecondarySubnetAZ` parameter also defaults sensibly: empty means
+"auto-pick the second AZ in this region," and you can override with an
+explicit AZ name if you need fine-grained control.
+
+These knobs cut storage cost from the un-tuned default to ~$0.55/hr.
 
 ```bash
 aws cloudformation create-stack \
   --stack-name slurm-qos-demo-prereqs \
-  --template-body file://parallelcluster-prerequisites-ha2.yaml \
+  --template-body file://1.architectures/2.aws-parallelcluster/infra-templates/parallelcluster-prerequisites.yaml \
   --parameters \
     ParameterKey=VPCName,ParameterValue=slurm-qos-demo \
     ParameterKey=PrimarySubnetAZ,ParameterValue=us-east-1b \
+    ParameterKey=SecondarySubnetAZ,ParameterValue=us-east-1c \
     ParameterKey=Capacity,ParameterValue=1200 \
     ParameterKey=PerUnitStorageThroughput,ParameterValue=125 \
     ParameterKey=HomeCapacity,ParameterValue=256 \
-    ParameterKey=HomeThroughput,ParameterValue=160 \
   --capabilities CAPABILITY_IAM
 ```
 
@@ -258,76 +229,31 @@ PREREQS_OUTPUTS=$(aws cloudformation describe-stacks \
 
 VPC_ID=$(echo "$PREREQS_OUTPUTS" | jq -r '.[] | select(.OutputKey=="VPC") | .OutputValue')
 PRIMARY_SUBNET=$(echo "$PREREQS_OUTPUTS" | jq -r '.[] | select(.OutputKey=="PrimaryPrivateSubnet") | .OutputValue')
+SECONDARY_SUBNET=$(echo "$PREREQS_OUTPUTS" | jq -r '.[] | select(.OutputKey=="SecondaryPrivateSubnet") | .OutputValue')
 PUBLIC_SUBNET=$(echo "$PREREQS_OUTPUTS" | jq -r '.[] | select(.OutputKey=="PublicSubnet") | .OutputValue')
 EFA_SG=$(echo "$PREREQS_OUTPUTS" | jq -r '.[] | select(.OutputKey=="SecurityGroup") | .OutputValue')
 FSXL_ID=$(echo "$PREREQS_OUTPUTS" | jq -r '.[] | select(.OutputKey=="FSxLustreFilesystemId") | .OutputValue')
 FSXZ_VOL_ID=$(echo "$PREREQS_OUTPUTS" | jq -r '.[] | select(.OutputKey=="FSxORootVolumeId") | .OutputValue')
 ```
 
-### Step 2 — Add a second private subnet
+The `SecondaryPrivateSubnet` output is what makes the next step clean —
+the Aurora DBSubnetGroup needs subnets in ≥2 AZs, and we now have them
+without a manual `aws ec2 create-subnet` workaround.
 
-This is the part the prereqs template doesn't do for you. The Aurora
-DBSubnetGroup demands AZ-redundancy, so we carve a second `/19` out of the
-private CIDR block in a *different* AZ:
+### Step 2 — Provision the accounting DB
 
-```bash
-# Pick a second AZ that has capacity for whatever else you might want to run there.
-# (Must be different from PrimarySubnetAZ, so we use 1c here since the prereqs landed in 1b.)
-SECONDARY_AZ=us-east-1c
-
-SECONDARY_SUBNET=$(aws ec2 create-subnet \
-  --vpc-id "$VPC_ID" \
-  --cidr-block 10.1.128.0/19 \
-  --availability-zone "$SECONDARY_AZ" \
-  --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=slurm-qos-demo Private Subnet - $SECONDARY_AZ}]" \
-  --query 'Subnet.SubnetId' --output text)
-
-echo "Secondary private subnet: $SECONDARY_SUBNET"
-
-# Associate it with the existing private route table (NAT-routed).
-PRIVATE_RT=$(aws ec2 describe-route-tables \
-  --filters "Name=vpc-id,Values=$VPC_ID" "Name=route.nat-gateway-id,Values=*" \
-  --query 'RouteTables[0].RouteTableId' --output text)
-aws ec2 associate-route-table --subnet-id "$SECONDARY_SUBNET" --route-table-id "$PRIVATE_RT"
-```
-
-The DB doesn't actually receive cross-AZ traffic in our setup (the head node
-is in the public subnet, which routes through the primary AZ's NAT gateway),
-but RDS requires the *subnet group* to span ≥2 AZs whether or not Aurora
-deploys an instance into both. The serverless v2 cluster we deploy below
-runs one writer instance in the primary AZ; the secondary subnet's only job
-is to satisfy the API.
-
-### Step 3 — Provision the accounting DB
-
-Now the database itself, with the prereqs subnets wired in.
-
-When this walkthrough was first run, the template hard-coded
-`EngineVersion: "8.0.mysql_aurora.3.07.1"` — a version
-[AWS rotates out of service on a rolling basis](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraMySQL.Updates.Versions.html).
-CloudFormation failed with `Cannot find version 8.0.mysql_aurora.3.07.1 for
-aurora-mysql`.
-[`PR #1101`](https://github.com/awslabs/awsome-distributed-ai/pull/1101)
-([issue #1096](https://github.com/awslabs/awsome-distributed-ai/issues/1096))
-exposes `EngineVersion` as a CloudFormation parameter so the template can
-absorb future Aurora rotations without code edits. If you're running this
-before that PR has merged, sed the template to a currently-available
-version (`aws rds describe-db-engine-versions --engine aurora-mysql --query
-'DBEngineVersions[?Status==\`available\`].EngineVersion'` lists what's
-live — `8.0.mysql_aurora.3.12.0` was the latest at the time of writing):
-
-```bash
-sed 's|EngineVersion: "8.0.mysql_aurora.3.07.1"|EngineVersion: "8.0.mysql_aurora.3.12.0"|' \
-  1.architectures/8.accounting-database/cf_database-accounting.yaml \
-  > cf_database-accounting-patched.yaml
-```
-
-Then deploy:
+Now the database itself. The
+[`cf_database-accounting.yaml`](https://github.com/awslabs/awsome-distributed-ai/blob/main/1.architectures/8.accounting-database/cf_database-accounting.yaml)
+template exposes `EngineVersion` as a parameter, defaulting to the latest
+Aurora MySQL 8.0 version available at the time of the template's last
+update. Override if needed (`aws rds describe-db-engine-versions --engine
+aurora-mysql --query 'DBEngineVersions[?Status==\`available\`].EngineVersion'`
+lists what's live in your region).
 
 ```bash
 aws cloudformation create-stack \
   --stack-name slurm-qos-demo-accounting \
-  --template-body file://cf_database-accounting-patched.yaml \
+  --template-body file://1.architectures/8.accounting-database/cf_database-accounting.yaml \
   --parameters \
     ParameterKey=ClusterName,ParameterValue=slurm-qos-demo-accounting \
     ParameterKey=MinCapacity,ParameterValue=1 \
@@ -358,7 +284,7 @@ permission is to reach the Aurora cluster on TCP 3306. Anything you attach
 that SG to becomes a permitted DB client. The head node gets it; nothing
 else needs to.
 
-### Step 4 — S3 bucket for the post-install script
+### Step 3 — S3 bucket for the post-install script
 
 ParallelCluster runs `CustomActions.OnNodeConfigured` on every compute node
 after it boots, fetching the script from S3. We need a bucket for that:
@@ -399,7 +325,7 @@ We'll talk about *why* this script exists (and the LDAP alternative) in the
 multi-user section below. For now it's just sitting in the bucket waiting
 for the compute fleet to fetch it.
 
-### Step 5 — ParallelCluster itself
+### Step 4 — ParallelCluster itself
 
 ParallelCluster 3.3+ supports Slurm accounting natively via the
 [`SlurmSettings.Database`](https://docs.aws.amazon.com/parallelcluster/latest/ug/cluster-yaml-Database-section-v3.html)
@@ -792,16 +718,17 @@ in production:
 | Aurora ACU floor charges 24/7 | Even an idle cluster bills ~$0.12/hr from Aurora | Acceptable; if you tear the cluster down nightly, also delete the DB stack. |
 | `require_secure_transport: ON` rejects plaintext clients | Manual `mysql` clients connecting directly fail with `SSL connection error` | Use `mysql --ssl-mode=REQUIRED --ssl-ca=/path/to/global-bundle.pem`, or connect via `slurmdbd` only. |
 
-Drafting this post surfaced four upstream issues in
+Drafting this post surfaced five upstream changes in
 [`awslabs/awsome-distributed-ai`](https://github.com/awslabs/awsome-distributed-ai)
-that were filed and have fixes in flight:
+— three already merged, two still in flight at the time of writing:
 
-| Issue | PR | What it fixes |
-|---|---|---|
-| [#1094](https://github.com/awslabs/awsome-distributed-ai/issues/1094) | [#1098](https://github.com/awslabs/awsome-distributed-ai/pull/1098) | Three typos and a leftover LDAP copy/paste line in the accounting-DB README (`custeradmin` → `clusteradmin`, `slurmdctld` → `slurmctld`, "LDAP User Interface" → "database"). |
-| [#1095](https://github.com/awslabs/awsome-distributed-ai/issues/1095) | [#1099](https://github.com/awslabs/awsome-distributed-ai/pull/1099) | The HyperPod `slurmdbd.conf` snippet doesn't configure TLS even though the Aurora cluster parameter group sets `require_secure_transport: ON`. Adds the RDS CA bundle download and `StorageParameters=SSL_CA=...`. ParallelCluster is unaffected — PC plumbs SSL automatically. |
-| [#1096](https://github.com/awslabs/awsome-distributed-ai/issues/1096) | [#1101](https://github.com/awslabs/awsome-distributed-ai/pull/1101) | Accounting-DB template pinned the retired Aurora MySQL `8.0.mysql_aurora.3.07.1`. The PR exposes `EngineVersion` as a parameter (default `8.0.mysql_aurora.3.12.0`, the current latest Serverless-v2-compatible version) so future Aurora rotations don't break the template. |
-| [#1097](https://github.com/awslabs/awsome-distributed-ai/issues/1097) | [#1100](https://github.com/awslabs/awsome-distributed-ai/pull/1100) | Prereqs template hard-coded `SINGLE_AZ_HA_1` for FSx OpenZFS, which isn't offered in many major regions (us-east-1, us-east-2, us-west-2, eu-central-1, eu-west-1, ap-northeast-1, …). Flips the default to `SINGLE_AZ_HA_2`. |
+| Issue | PR | Status | What it fixes |
+|---|---|---|---|
+| [#1094](https://github.com/awslabs/awsome-distributed-ai/issues/1094) | [#1098](https://github.com/awslabs/awsome-distributed-ai/pull/1098) | merged | Three typos and a leftover LDAP copy/paste line in the accounting-DB README (`custeradmin` → `clusteradmin`, `slurmdctld` → `slurmctld`, "LDAP User Interface" → "database"). |
+| [#1095](https://github.com/awslabs/awsome-distributed-ai/issues/1095) | [#1099](https://github.com/awslabs/awsome-distributed-ai/pull/1099) | in flight | The HyperPod `slurmdbd.conf` snippet doesn't configure TLS even though the Aurora cluster parameter group sets `require_secure_transport: ON`. Adds the RDS CA bundle download and `StorageParameters=SSL_CA=...`. ParallelCluster is unaffected — PC plumbs SSL automatically. |
+| [#1096](https://github.com/awslabs/awsome-distributed-ai/issues/1096) | [#1101](https://github.com/awslabs/awsome-distributed-ai/pull/1101) | merged | Accounting-DB template pinned the retired Aurora MySQL `8.0.mysql_aurora.3.07.1`. Exposes `EngineVersion` as a parameter (default `8.0.mysql_aurora.3.12.0`) so future Aurora rotations don't break the template. |
+| [#1097](https://github.com/awslabs/awsome-distributed-ai/issues/1097) | [#1100](https://github.com/awslabs/awsome-distributed-ai/pull/1100) | merged | Tactical fix for the prereqs template hard-coding `SINGLE_AZ_HA_1` for FSx OpenZFS (unavailable in us-east-1 and other major regions). Flipped the default to `SINGLE_AZ_HA_2`. |
+| — | [#1102](https://github.com/awslabs/awsome-distributed-ai/pull/1102) | in flight | Follow-up to #1100 that also addresses the manual-second-subnet workaround. Adds a `SecondarySubnetAZ` parameter and a second private subnet, then switches FSx OpenZFS from `SINGLE_AZ_HA_2` to `MULTI_AZ_1` — the only deployment type with universal regional coverage. This walkthrough assumes #1102 has merged; readers running it before then will see the template still on `SINGLE_AZ_HA_2` and need to add a second subnet by hand. |
 
 ## Wrap-up — and what's next
 
@@ -820,7 +747,7 @@ The building blocks:
   needed for `slurmdbd`.
 - The
   [`1.architectures/2.aws-parallelcluster/infra-templates/parallelcluster-prerequisites.yaml`](https://github.com/awslabs/awsome-distributed-ai/blob/main/1.architectures/2.aws-parallelcluster/infra-templates/parallelcluster-prerequisites.yaml)
-  prereqs template handles VPC + FSx (with the HA_2 patch we describe).
+  prereqs template handles VPC + two private subnets + FSx Lustre + Multi-AZ FSx OpenZFS.
 - ParallelCluster ≥3.3's
   [`SlurmSettings.Database`](https://docs.aws.amazon.com/parallelcluster/latest/ug/cluster-yaml-Database-section-v3.html)
   field wires `slurmdbd` in automatically (and plumbs the RDS CA so TLS
