@@ -81,9 +81,13 @@ Parameters:
       Multi-AZ FSx OpenZFS (the /home file system) and for the
       accounting-database CloudFormation template's Aurora DBSubnetGroup,
       which requires subnets in two different Availability Zones. Leave
-      empty to auto-pick an AZ different from PrimarySubnetAZ (the first
-      alphabetical AZ that isn't already PrimarySubnetAZ), or provide an
-      explicit AZ name (e.g. us-east-1c) to override.
+      empty to default to the second AZ in the region (alphabetical), or
+      provide an explicit AZ name (e.g. us-east-1c) to override. Must differ
+      from PrimarySubnetAZ. NOTE: if your PrimarySubnetAZ happens to be the
+      second alphabetically (e.g. us-east-1b, ap-northeast-1d), set
+      SecondarySubnetAZ explicitly to avoid a collision at FSx create time.
+      CloudFormation cannot validate this collision at parameter-eval time
+      because Fn::GetAZs is not permitted inside Conditions or Rules.
     Type: String
     Default: ""
 
@@ -160,11 +164,6 @@ Parameters:
 Conditions:
   S3EndpointCondition: !Equals [!Ref 'CreateS3Endpoint', 'true']
   UseAutoSecondaryAZ: !Equals [!Ref SecondarySubnetAZ, '']
-  # If PrimarySubnetAZ happens to be the second AZ alphabetically (the
-  # default position the auto-secondary would otherwise pick), the
-  # auto-secondary falls back to the first AZ instead. Guarantees the
-  # two AZs are distinct under the auto path without any user input.
-  PrimaryIsSecondAZAlphabetical: !Equals [!Ref PrimarySubnetAZ, !Select [1, !GetAZs '']]
 
 ###########
 ## Rules ##
@@ -304,10 +303,7 @@ Resources:
       CidrBlock: !Select [ 1, !Cidr [ !FindInMap [Networking, VPC, CIDR1], 2, 15 ]]
       AvailabilityZone: !If
         - UseAutoSecondaryAZ
-        - !If
-          - PrimaryIsSecondAZAlphabetical
-          - !Select [ 0, !GetAZs '' ]
-          - !Select [ 1, !GetAZs '' ]
+        - !Select [ 1, !GetAZs '' ]
         - !Ref SecondarySubnetAZ
       Tags:
         - Key: Name
@@ -317,10 +313,7 @@ Resources:
               - 'Private Subnet -'
               - !If
                 - UseAutoSecondaryAZ
-                - !If
-                  - PrimaryIsSecondAZAlphabetical
-                  - !Select [ 0, !GetAZs '' ]
-                  - !Select [ 1, !GetAZs '' ]
+                - !Select [ 1, !GetAZs '' ]
                 - !Ref SecondarySubnetAZ
 
   # Create and set the public route table
