@@ -345,8 +345,6 @@ Resources:
               BuildDate: '{{imagebuilder:buildDate}}'
               SourceAMI: '{{imagebuilder:buildVersion}}'
               StackName: !Ref AWS::StackName
-            LaunchPermissionConfiguration:
-              UserIds: []
 
   #############################################################################
   # ImageBuilder Pipeline (Optional - for scheduled builds)
