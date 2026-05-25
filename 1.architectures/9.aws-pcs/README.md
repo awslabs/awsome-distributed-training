@@ -159,7 +159,7 @@ The custom DLAMI built by `dlami-for-pcs.yaml` includes:
 
 ---
 
-## Usage Examples
+0## Usage Examples
 
 ### Example 1: Basic CPU Cluster
 
@@ -287,43 +287,6 @@ For more details, see the [Connect to Cluster](https://catalog.workshops.aws/ml-
 
 ---
 
-## Monitoring and Operations
-
-### View Cluster Status
-
-```bash
-# Connect to login node, then:
-sinfo                    # View partition and node status
-squeue                   # View job queue
-sacct                    # View job accounting (if enabled)
-```
-
-### Submit Jobs
-
-```bash
-# CPU job
-sbatch --partition=cpu1 --nodes=4 --ntasks-per-node=96 my_job.sh
-
-# GPU job (G5)
-sbatch --partition=gpu --nodes=4 --gres=gpu:4 my_gpu_job.sh
-
-# P5 job with capacity block
-sbatch --partition=p5 --nodes=8 --gres=gpu:8 my_p5_job.sh
-```
-
-### Container Jobs (Enroot + Pyxis)
-
-```bash
-# Run PyTorch container
-sbatch --partition=gpu \
-  --nodes=4 \
-  --container-image=nvcr.io/nvidia/pytorch:24.01-py3 \
-  --container-mounts=/shared:/shared \
-  my_container_job.sh
-```
-
----
-
 ## User Management and Observability
 
 ### LDAP User Management
@@ -334,7 +297,7 @@ For centralized user management across the cluster, see:
 ### Observability Stack
 
 For monitoring and observability, see:
-- [Prometheus & Grafana Setup](../../../4.validation_and_observability/4.prometheus-grafana/README.md) - Deploy monitoring stack with DCGM metrics
+- [Prometheus & Grafana Setup](../../4.validation_and_observability/4.prometheus-grafana/README.md) - Deploy monitoring stack with DCGM metrics
 
 ---
 

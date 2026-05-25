@@ -16,6 +16,26 @@ Metadata:
           - LoginNodeInstanceType
           - ComputeNodeInstanceType
       - Label:
+          default: Additional On-Demand Compute Node Group (Optional)
+        Parameters:
+          - DeployOnDemandCNG
+          - OnDemandCngName
+          - OnDemandQueueName
+          - OnDemandInstanceType
+          - OnDemandMaxCount
+          - OnDemandMinCount
+      - Label:
+          default: Additional Multi-NIC Compute Node Group for P5/P6 (Optional)
+        Parameters:
+          - DeployPseriesCNG
+          - CapacityReservationId
+          - PseriesCngName
+          - PseriesQueueName
+          - PseriesInstanceType
+          - NetworkInterfaceCount
+          - PseriesMaxCount
+          - PseriesMinCount
+      - Label:
           default: Network Configuration
         Parameters:
           - VPCName
@@ -37,35 +57,15 @@ Metadata:
           - SemanticVersion
           - BuildSchedule
       - Label:
-          default: Additional On-Demand Compute Node Group (Optional)
+          default: HPC Recipes Configuration
         Parameters:
-          - DeployOnDemandCNG
-          - OnDemandCngName
-          - OnDemandQueueName
-          - OnDemandInstanceType
-          - OnDemandMaxCount
-          - OnDemandMinCount
-      - Label:
-          default: Additional Multi-NIC Compute Node Group for P5/P6 (Optional)
-        Parameters:
-          - DeployPseriesCNG
-          - CapacityReservationId
-          - PseriesCngName
-          - PseriesQueueName
-          - PseriesInstanceType
-          - NetworkInterfaceCount
-          - PseriesMaxCount
-          - PseriesMinCount
+          - HpcRecipesS3Bucket
+          - HpcRecipesBranch
       - Label:
           default: S3 Configuration for Nested Templates
         Parameters:
           - S3BucketName
           - S3KeyPrefix
-      - Label:
-          default: HPC Recipes Configuration
-        Parameters:
-          - HpcRecipesS3Bucket
-          - HpcRecipesBranch
 
 Parameters:
   # S3 Configuration
@@ -297,7 +297,7 @@ Parameters:
   PseriesMinCount:
     Type: Number
     Description: Minimum number of instances for multi-NIC compute node group (must be 0 for dynamic scaling)
-    Default: 0
+    Default: 4
     MinValue: 0
 
 Conditions:
