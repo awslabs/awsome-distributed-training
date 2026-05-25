@@ -14,6 +14,7 @@ Metadata:
       - Label:
           default: PCS Cluster configuration
         Parameters:
+          - ClusterName
           - SlurmVersion
           - ManagedAccounting
           - AccountingPolicyEnforcement
@@ -43,6 +44,13 @@ Metadata:
           - HpcRecipesBranch
 
 Parameters:
+  ClusterName:
+    Type: String
+    Description: Name of the PCS cluster
+    Default: "ml-cluster"
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-]{0,39}$'
+    ConstraintDescription: Must start with a letter, contain only alphanumeric characters and hyphens, and be 1-40 characters long
+
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: Select the VPC where the cluster will be launched
@@ -223,7 +231,7 @@ Resources:
   PCSCluster:
     Type: AWS::PCS::Cluster
     Properties:
-      Name: !Sub '${AWS::StackName}'
+      Name: !Ref ClusterName
       Size: SMALL
       Scheduler:
         Type: SLURM
