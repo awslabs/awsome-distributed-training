@@ -42,10 +42,12 @@ Parameters:
   CngName:
     Type: String
     Description: Name for Compute Node Group
+    Default: "gpu-p5"
 
   QueueName:
     Type: String
     Description: Name for Queue
+    Default: "gpu-p5"
 
   InstanceType:
     Type: String

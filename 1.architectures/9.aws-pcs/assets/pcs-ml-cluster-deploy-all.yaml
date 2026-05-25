@@ -8,6 +8,12 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
+          default: Network Configuration
+        Parameters:
+          - VPCName
+          - PrimarySubnetAZ
+          - CreateS3Endpoint
+      - Label:
           default: PCS Cluster Configuration
         Parameters:
           - SlurmVersion
@@ -35,12 +41,6 @@ Metadata:
           - NetworkInterfaceCount
           - PseriesMaxCount
           - PseriesMinCount
-      - Label:
-          default: Network Configuration
-        Parameters:
-          - VPCName
-          - PrimarySubnetAZ
-          - CreateS3Endpoint
       - Label:
           default: FSx Storage Configuration
         Parameters:
@@ -167,12 +167,11 @@ Parameters:
   # PCS Cluster Configuration
   SlurmVersion:
     Type: String
-    Default: 25.05
+    Default: 25.11
     Description: Version of Slurm to use
     AllowedValues:
-      - 24.05
-      - 24.11
       - 25.05
+      - 25.11
 
   ManagedAccounting:
     Type: String
@@ -268,12 +267,12 @@ Parameters:
   PseriesCngName:
     Type: String
     Description: Name for multi-NIC compute node group
-    Default: "p5"
+    Default: "gpu-p5"
 
   PseriesQueueName:
     Type: String
     Description: Queue name for multi-NIC compute node group
-    Default: "p5"
+    Default: "gpu-p5"
 
   PseriesInstanceType:
     Type: String

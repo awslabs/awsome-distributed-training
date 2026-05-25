@@ -19,7 +19,7 @@ The architecture includes:
 - VPC with public/private subnets
 - FSx for Lustre for high-performance shared storage
 - FSx for OpenZFS for home directories
-- PCS cluster with Slurm scheduler (24.05, 24.11, or 25.05)
+- PCS cluster with Slurm scheduler (25.05 or 25.11)
 - Login node group (public subnet)
 - Compute node groups (private subnet)
 - Optional custom DLAMI with ML frameworks and container runtime
@@ -70,7 +70,7 @@ Deploy components separately for more control:
 | Component | Description | Deploy | When to Use |
 |-----------|-------------|--------|-------------|
 | **Prerequisites** | VPC, subnets, security groups, FSx filesystems | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/ml-cluster-prerequisites.yaml&stackName=pcs-prerequisites) | Use existing VPC or customize networking |
-| **DLAMI for PCS** | Custom AMI with PCS agent, Slurm 24.11/25.05, Enroot, Pyxis | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/dlami-for-pcs.yaml&stackName=pcs-dlami) | Build custom AMI with specific configurations |
+| **DLAMI for PCS** | Custom AMI with PCS agent, Slurm 25.05/25.11, Enroot, Pyxis | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/dlami-for-pcs.yaml&stackName=pcs-dlami) | Build custom AMI with specific configurations |
 | **PCS Cluster** | Main cluster with login and compute nodes | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/cluster.yaml&stackName=pcs-cluster) | Deploy cluster to existing VPC/FSx |
 | **Add CNG (Single NIC)** | Additional compute nodes with single network interface | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/add-cng.yaml&stackName=pcs-add-cng) | Add CPU/GPU queues (G5, P4d, Trn1, etc.) |
 | **Add CNG (Multi NIC)** | P5/P6 nodes with 16/32 network interfaces (On-Demand or Capacity Blocks for ML) | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/add-cng-p5.yaml&stackName=pcs-add-cng-p5) | Add P5, P6-B200 instances |
@@ -146,7 +146,7 @@ The custom DLAMI built by `dlami-for-pcs.yaml` includes:
 |-----------|---------|---------|
 | **Base Image** | DLAMI Base GPU (Ubuntu 24.04 / AL2023) | Pre-installed NVIDIA drivers and CUDA |
 | **AWS PCS Agent** | Latest | Node lifecycle management |
-| **Slurm** | 24.11 + 25.05 | Workload scheduler (both versions installed) |
+| **Slurm** | 25.05 + 25.11 | Workload scheduler (both versions installed) |
 | **Enroot** | 3.5.0 | Unprivileged container runtime |
 | **Pyxis** | 0.20.0 | Slurm plugin for container jobs |
 | **EFS Utils** | Latest | Mount EFS filesystems |
@@ -154,8 +154,8 @@ The custom DLAMI built by `dlami-for-pcs.yaml` includes:
 | **SSM Agent** | Latest | Remote management |
 
 **Slurm PATH configuration:**
-- Slurm 24.11 is first in PATH for maximum compatibility
-- Both versions available: `/opt/aws/pcs/scheduler/slurm-24.11` and `/opt/aws/pcs/scheduler/slurm-25.05`
+- Slurm 25.05 is first in PATH for maximum compatibility
+- Both versions available: `/opt/aws/pcs/scheduler/slurm-25.05` and `/opt/aws/pcs/scheduler/slurm-25.11`
 
 ---
 
