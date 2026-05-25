@@ -8,10 +8,13 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
-          default: S3 Configuration for Nested Templates
+          default: PCS Cluster Configuration
         Parameters:
-          - S3BucketName
-          - S3KeyPrefix
+          - SlurmVersion
+          - ManagedAccounting
+          - AccountingPolicyEnforcement
+          - LoginNodeInstanceType
+          - ComputeNodeInstanceType
       - Label:
           default: Network Configuration
         Parameters:
@@ -34,19 +37,6 @@ Metadata:
           - SemanticVersion
           - BuildSchedule
       - Label:
-          default: PCS Cluster Configuration
-        Parameters:
-          - SlurmVersion
-          - ManagedAccounting
-          - AccountingPolicyEnforcement
-          - LoginNodeInstanceType
-          - ComputeNodeInstanceType
-      - Label:
-          default: HPC Recipes Configuration
-        Parameters:
-          - HpcRecipesS3Bucket
-          - HpcRecipesBranch
-      - Label:
           default: Additional On-Demand Compute Node Group (Optional)
         Parameters:
           - DeployOnDemandCNG
@@ -66,6 +56,16 @@ Metadata:
           - NetworkInterfaceCount
           - PseriesMaxCount
           - PseriesMinCount
+      - Label:
+          default: S3 Configuration for Nested Templates
+        Parameters:
+          - S3BucketName
+          - S3KeyPrefix
+      - Label:
+          default: HPC Recipes Configuration
+        Parameters:
+          - HpcRecipesS3Bucket
+          - HpcRecipesBranch
 
 Parameters:
   # S3 Configuration

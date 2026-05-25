@@ -103,8 +103,16 @@ Conditions:
       - Ref: NetworkInterfaceCount
       - "32"
   UseCapacityBlock: !Not [!Equals [!Ref CapacityReservationId, ""]]
+  UseOnDemand: !Equals [!Ref CapacityReservationId, ""]
 
 Resources:
+
+  # Cluster Placement Group (On-Demand only)
+  PlacementGroup:
+    Type: AWS::EC2::PlacementGroup
+    Condition: UseOnDemand
+    Properties:
+      Strategy: cluster
 
   # Compute Node groups - Compute Nodes
   PCSNodeGroupCompute:
@@ -149,6 +157,10 @@ Resources:
           - UseCapacityBlock
           - CapacityReservationTarget:
               CapacityReservationId: !Ref CapacityReservationId
+          - !Ref AWS::NoValue
+        Placement: !If
+          - UseOnDemand
+          - GroupName: !Ref PlacementGroup
           - !Ref AWS::NoValue
         TagSpecifications:
           - ResourceType: instance
