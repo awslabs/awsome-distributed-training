@@ -22,10 +22,12 @@ Metadata:
           - SlurmVersion
           - ManagedAccounting
           - AccountingPolicyEnforcement
-          - LoginNodeInstanceType
-          - ComputeNodeInstanceType
       - Label:
-          default: Additional On-Demand Compute Node Group (Optional)
+          default: Login Node Configuration
+        Parameters:
+          - LoginNodeInstanceType
+      - Label:
+          default: On-Demand Compute Node Group
         Parameters:
           - DeployOnDemandCNG
           - OnDemandCngName
@@ -200,13 +202,8 @@ Parameters:
 
   LoginNodeInstanceType:
     Type: String
-    Description: Instance Type for Login Compute Node Group
+    Description: Instance Type for Login Node Group
     Default: "m6i.4xlarge"
-
-  ComputeNodeInstanceType:
-    Type: String
-    Description: Instance Type for Compute Compute Node Group
-    Default: "c6i.4xlarge"
 
   # HPC Recipes Configuration
   HpcRecipesS3Bucket:
@@ -223,29 +220,29 @@ Parameters:
     Description: HPC Recipes for AWS release branch
     AllowedPattern: '^(?!.*/\.git$)(?!.*/\.)(?!.*\\.\.)[a-zA-Z0-9-_\.]+$'
 
-  # Additional On-Demand Compute Node Group (Optional)
+  # On-Demand Compute Node Group
   DeployOnDemandCNG:
     Type: String
-    Description: Deploy an additional on-demand compute node group
-    Default: 'false'
+    Description: Deploy on-demand compute node group
+    Default: 'true'
     AllowedValues:
       - 'true'
       - 'false'
 
   OnDemandCngName:
     Type: String
-    Description: Name for additional on-demand compute node group
-    Default: "gpu1"
+    Description: Name for on-demand compute node group
+    Default: "cpu1"
 
   OnDemandQueueName:
     Type: String
-    Description: Queue name for additional on-demand compute node group
-    Default: "gpu1"
+    Description: Queue name for on-demand compute node group
+    Default: "cpu1"
 
   OnDemandInstanceType:
     Type: String
-    Description: Instance type for additional on-demand compute node group
-    Default: "g6.xlarge"
+    Description: Instance type for on-demand compute node group
+    Default: "c6i.4xlarge"
 
   OnDemandMaxCount:
     Type: Number
@@ -378,12 +375,6 @@ Resources:
         PublicSubnetId: !GetAtt PrerequisitesStack.Outputs.PublicSubnet
         PrivateSubnetId: !GetAtt PrerequisitesStack.Outputs.PrimaryPrivateSubnet
         DefaultSecurityGroupId: !GetAtt PrerequisitesStack.Outputs.SecurityGroup
-        AmiId: !If
-          - BuildAMIEnabled
-          - !GetAtt DLAMIStack.Outputs.DLAMIforPCSAmiId
-          - !Sub '{{resolve:ssm:/aws/service/pcs/ami/dlami-base-ubuntu2404/x86_64/latest/ami-id}}'
-        LoginNodeInstanceType: !Ref LoginNodeInstanceType
-        ComputeNodeInstanceType: !Ref ComputeNodeInstanceType
         FSxLustreFilesystemId: !GetAtt PrerequisitesStack.Outputs.FSxLustreFilesystemId
         FSxLustreFilesystemMountName: !GetAtt PrerequisitesStack.Outputs.FSxLustreFilesystemMountname
         FSxOpenZFSFilesystemId: !GetAtt PrerequisitesStack.Outputs.FSxOFilesystemId
@@ -397,7 +388,40 @@ Resources:
           Value: !Sub '${AWS::StackName}-Cluster'
 
   #############################################################################
-  # 4. Additional On-Demand Compute Node Group Stack (Optional)
+  # 4. Login Node Group Stack
+  #############################################################################
+  LoginNodeGroupStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - ClusterStack
+    Properties:
+      TemplateURL: !If
+        - UseLocalTemplates
+        - add-cng.yaml
+        - !Sub 'https://${S3BucketName}.s3.amazonaws.com/${S3KeyPrefix}add-cng.yaml'
+      Parameters:
+        ClusterId: !GetAtt ClusterStack.Outputs.ClusterId
+        CngName: login
+        QueueName: ""
+        InstanceType: !Ref LoginNodeInstanceType
+        MaxCount: 1
+        MinCount: 1
+        SubnetId: !GetAtt PrerequisitesStack.Outputs.PublicSubnet
+        AmiId: !If
+          - BuildAMIEnabled
+          - !GetAtt DLAMIStack.Outputs.DLAMIforPCSAmiId
+          - !Sub '{{resolve:ssm:/aws/service/pcs/ami/dlami-base-ubuntu2404/x86_64/latest/ami-id}}'
+        ClusterSecurityGroupId: !GetAtt PrerequisitesStack.Outputs.SecurityGroup
+        IamProfileArn: !GetAtt ClusterStack.Outputs.InstanceProfileArn
+        FSxLustreFilesystemId: !GetAtt PrerequisitesStack.Outputs.FSxLustreFilesystemId
+        FSxLustreFilesystemMountName: !GetAtt PrerequisitesStack.Outputs.FSxLustreFilesystemMountname
+        FSxOpenZFSFilesystemId: !GetAtt PrerequisitesStack.Outputs.FSxOFilesystemId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-LoginNodeGroup'
+
+  #############################################################################
+  # 5. On-Demand Compute Node Group Stack
   #############################################################################
   OnDemandCNGStack:
     Type: AWS::CloudFormation::Stack
@@ -431,7 +455,7 @@ Resources:
           Value: !Sub '${AWS::StackName}-OnDemandCNG'
 
   #############################################################################
-  # 5. Additional Multi-NIC Compute Node Group Stack for P5/P6 (Optional)
+  # 6. Additional Multi-NIC Compute Node Group Stack for P5/P6 (Optional)
   #############################################################################
   PseriesCNGStack:
     Type: AWS::CloudFormation::Stack
@@ -541,17 +565,26 @@ Outputs:
     Description: URL to access the cluster in the PCS console
     Value: !GetAtt ClusterStack.Outputs.PcsConsoleUrl
 
-  Ec2ConsoleUrl:
-    Description: URL to access login node instances via Session Manager
-    Value: !GetAtt ClusterStack.Outputs.Ec2ConsoleUrl
+  LoginNodeGroupId:
+    Description: Login Node Group ID
+    Value: !GetAtt LoginNodeGroupStack.Outputs.NodeGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}-LoginNodeGroupId'
+
+  OnDemandComputeNodeGroupId:
+    Condition: DeployOnDemandCNGEnabled
+    Description: On-Demand Compute Node Group ID
+    Value: !GetAtt OnDemandCNGStack.Outputs.NodeGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}-OnDemandComputeNodeGroupId'
 
   #############################################################################
-  # Additional Compute Node Group Outputs (Optional)
+  # Compute Node Group Outputs
   #############################################################################
   OnDemandCNGDeployed:
     Condition: DeployOnDemandCNGEnabled
     Description: On-demand compute node group deployed (single NIC)
-    Value: !Sub '${OnDemandCngName} (${OnDemandInstanceType})'
+    Value: !Sub '${OnDemandCngName} (${OnDemandInstanceType}, ${OnDemandMinCount}-${OnDemandMaxCount} instances)'
 
   PseriesCNGDeployed:
     Condition: DeployPseriesCNGEnabled

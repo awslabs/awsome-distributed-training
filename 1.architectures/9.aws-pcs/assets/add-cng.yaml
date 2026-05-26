@@ -38,7 +38,8 @@ Parameters:
 
   QueueName:
     Type: String
-    Description: Name for Queue
+    Description: Name for Queue (leave empty to skip queue creation)
+    Default: ""
 
   InstanceType:
     Type: String
@@ -81,6 +82,9 @@ Parameters:
     Type: String
     Description: Filesystem ID for FSx for OpenZFS
 
+Conditions:
+  CreateQueue: !Not [!Equals [!Ref QueueName, ""]]
+
 Resources:
 
   # Compute Node groups - Compute Nodes
@@ -104,6 +108,7 @@ Resources:
 
   PCSQueueCompute:
     Type: AWS::PCS::Queue
+    Condition: CreateQueue
     Properties:
       ClusterId: !Ref ClusterId
       Name: !Ref QueueName
@@ -150,3 +155,12 @@ Resources:
             - if [ ! -z "${FSxLustreFilesystemId}" ]; then mkdir -p /fsx; mount -t lustre ${FSxLustreFilesystemId}.fsx.${AWS::Region}.amazonaws.com@tcp:/${FSxLustreFilesystemMountName} /fsx; chmod 1777 /fsx; fi
 
             --==MYBOUNDARY==
+
+Outputs:
+  NodeGroupId:
+    Description: Compute Node Group ID
+    Value: !GetAtt PCSNodeGroupCompute.Id
+  QueueId:
+    Condition: CreateQueue
+    Description: Queue ID
+    Value: !GetAtt PCSQueueCompute.Id

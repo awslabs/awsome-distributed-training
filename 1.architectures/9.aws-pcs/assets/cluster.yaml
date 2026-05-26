@@ -28,12 +28,6 @@ Metadata:
           - PrivateSubnetId
           - DefaultSecurityGroupId
       - Label:
-          default: PCS ComputeNodeGroups configuration
-        Parameters:
-          - LoginNodeInstanceType
-          - ComputeNodeInstanceType
-          - AmiId
-      - Label:
           default: PCS Storage configuration
         Parameters:
           - FSxLustreFilesystemId
@@ -65,24 +59,9 @@ Parameters:
     Type: AWS::EC2::Subnet::Id
     Description: Select the Subnet where the Compute Node will be launched
 
-  AmiId:
-    Type: AWS::EC2::Image::Id
-    Description: Enter the AMI ID for the Login Node and Compute Node (e.g. ami-0abcdef1234567890)
-    ConstraintDescription: Must be a valid AMI ID (ami-xxxxxxxxxxxxxxxxx)
-
   DefaultSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
-    Description: Select SecurityGroup for the Login Node and Compute Node
-
-  LoginNodeInstanceType:
-    Type: String
-    Description: Instance Type for Login Node Group
-    Default: "m6i.4xlarge"
-
-  ComputeNodeInstanceType:
-    Type: String
-    Description: Instance Type for Compute Node Group
-    Default: "c6i.4xlarge"
+    Description: Select SecurityGroup for the cluster
 
   FSxLustreFilesystemId:
     Type: String
@@ -145,89 +124,6 @@ Conditions:
 
 Resources:
 
-  LaunchTemplateLogin:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateName: !Sub 'PCS-lt-login'
-
-      LaunchTemplateData:
-        TagSpecifications:
-          - ResourceType: instance
-            Tags:
-              - Key: HPCRecipes
-                Value: "true"
-              - Key: Name
-                Value: !Sub 'PCS-login'
-        MetadataOptions:
-          HttpEndpoint: enabled
-          HttpPutResponseHopLimit: 4
-          HttpTokens: required
-        SecurityGroupIds:
-          - !Ref DefaultSecurityGroupId
-        UserData:
-          Fn::Base64: !Sub |
-            MIME-Version: 1.0
-            Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
-
-            --==MYBOUNDARY==
-            Content-Type: text/cloud-config; charset="us-ascii"
-            MIME-Version: 1.0
-            
-            runcmd:
-            - mkdir -p /tmp/home
-            - rsync -aA /home/ /tmp/home
-            - echo "${FSxOpenZFSFilesystemId}.fsx.${AWS::Region}.amazonaws.com:/fsx/ /home nfs noatime,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576,defaults 0 0" >> /etc/fstab
-            - mount -a -t nfs defaults
-            - if [ "enabled" == "$(sestatus | awk '/^SELinux status:/{print $3}')" ]; then setsebool -P use_nfs_home_dirs 1; fi
-            - rsync -aA --ignore-existing /tmp/home/ /home
-            - rm -rf /tmp/home/
-            # If provided, mount FSxL filesystem as /fsx
-            - if [ ! -z "${FSxLustreFilesystemId}" ]; then mkdir -p /fsx; mount -t lustre ${FSxLustreFilesystemId}.fsx.${AWS::Region}.amazonaws.com@tcp:/${FSxLustreFilesystemMountName} /fsx; chmod 1777 /fsx; fi
-
-            --==MYBOUNDARY==
-
-  LaunchTemplateCompute:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateName: !Sub 'PCS-lt-cpu1'
-
-      LaunchTemplateData:
-        TagSpecifications:
-          - ResourceType: instance
-            Tags:
-              - Key: HPCRecipes
-                Value: "true"
-              - Key: Name
-                Value: !Sub 'PCS-cpu1'
-        MetadataOptions:
-          HttpEndpoint: enabled
-          HttpPutResponseHopLimit: 4
-          HttpTokens: required
-        SecurityGroupIds:
-          - !Ref DefaultSecurityGroupId
-        UserData:
-          Fn::Base64: !Sub |
-            MIME-Version: 1.0
-            Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
-
-            --==MYBOUNDARY==
-            Content-Type: text/cloud-config; charset="us-ascii"
-            MIME-Version: 1.0
-
-            runcmd:
-            - mkdir -p /tmp/home
-            - rsync -aA /home/ /tmp/home
-            - echo "${FSxOpenZFSFilesystemId}.fsx.${AWS::Region}.amazonaws.com:/fsx/ /home nfs noatime,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576,defaults 0 0" >> /etc/fstab
-            - mount -a -t nfs defaults
-            - if [ "enabled" == "$(sestatus | awk '/^SELinux status:/{print $3}')" ]; then setsebool -P use_nfs_home_dirs 1; fi
-            - rsync -aA --ignore-existing /tmp/home/ /home
-            - rm -rf /tmp/home/
-            # If provided, mount FSxL filesystem as /fsx
-            - if [ ! -z "${FSxLustreFilesystemId}" ]; then mkdir -p /fsx; mount -t lustre ${FSxLustreFilesystemId}.fsx.${AWS::Region}.amazonaws.com@tcp:/${FSxLustreFilesystemMountName} /fsx; chmod 1777 /fsx; fi
-
-            --==MYBOUNDARY==
-
-
   # Cluster
   PCSCluster:
     Type: AWS::PCS::Cluster
@@ -254,7 +150,7 @@ Resources:
             - []
         - !Ref AWS::NoValue
 
-  # Compute Node groups
+  # IAM Instance Profile
   PCSInstanceProfile:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -265,52 +161,6 @@ Resources:
           - 'pcs-${StackHash}-${AWS::Region}'
           - StackHash: !Select [0, !Split ['-', !Select [2, !Split ['/', !Ref 'AWS::StackId']]]]
       TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.amazonaws.com/${HpcRecipesBranch}/recipes/pcs/getting_started/assets/pcs-iip-minimal.yaml'
-
-  # Compute Node groups - Login Nodes
-  PCSNodeGroupLogin:
-    Type: AWS::PCS::ComputeNodeGroup
-    Properties:
-      ClusterId: !GetAtt [PCSCluster, Id]
-      Name: login
-      ScalingConfiguration:
-        MinInstanceCount: 1
-        MaxInstanceCount: 1
-      IamInstanceProfileArn: !GetAtt [ PCSInstanceProfile, Outputs.InstanceProfileArn ]
-      CustomLaunchTemplate:
-        TemplateId: !Ref LaunchTemplateLogin
-        Version: 1
-      SubnetIds:
-        - !Ref PublicSubnetId
-      AmiId: !Ref AmiId
-      InstanceConfigs:
-        - InstanceType: !Ref LoginNodeInstanceType
-
-  # Compute Node groups - Compute Nodes
-  PCSNodeGroupCompute:
-    Type: AWS::PCS::ComputeNodeGroup
-    Properties:
-      ClusterId: !GetAtt [PCSCluster, Id]
-      Name: cpu1
-      ScalingConfiguration:
-        MinInstanceCount: 0
-        MaxInstanceCount: 4
-      IamInstanceProfileArn: !GetAtt [ PCSInstanceProfile, Outputs.InstanceProfileArn ]
-      CustomLaunchTemplate:
-        TemplateId: !Ref LaunchTemplateCompute
-        Version: 1
-      SubnetIds:
-        - !Ref PrivateSubnetId
-      AmiId: !Ref AmiId
-      InstanceConfigs:
-        - InstanceType: !Ref ComputeNodeInstanceType
-
-  PCSQueueCompute:
-    Type: AWS::PCS::Queue
-    Properties:
-      ClusterId: !GetAtt [PCSCluster, Id]
-      Name: cpu1
-      ComputeNodeGroupConfigurations:
-        - ComputeNodeGroupId: !GetAtt [PCSNodeGroupCompute, Id]
 
 Outputs:
   ClusterId:
@@ -327,12 +177,3 @@ Outputs:
         }
     Export:
       Name: !Sub ${AWS::StackName}-PcsConsoleUrl
-  Ec2ConsoleUrl:
-    Description: URL to access instance(s) in the login node group via Session Manager
-    Value: !Sub
-      - https://${ConsoleDomain}/ec2/home?region=${AWS::Region}#Instances:instanceState=running;tag:aws:pcs:compute-node-group-id=${NodeGroupLoginId}
-      - { ConsoleDomain: !If [ GovCloud, 'console.amazonaws-us-gov.com', !If [ China, 'console.amazonaws.cn', !Sub '${AWS::Region}.console.aws.amazon.com']],
-          NodeGroupLoginId: !GetAtt [ PCSNodeGroupLogin, Id ] 
-        }
-    Export:
-      Name: !Sub ${AWS::StackName}-Ec2ConsoleUrl

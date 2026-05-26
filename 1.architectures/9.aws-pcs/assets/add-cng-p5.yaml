@@ -49,8 +49,8 @@ Parameters:
 
   QueueName:
     Type: String
-    Description: Name for Queue
-    Default: "gpu-p5"
+    Description: Name for Queue (leave empty to skip queue creation)
+    Default: ""
 
   InstanceType:
     Type: String
@@ -109,6 +109,7 @@ Conditions:
       - "32"
   UseCapacityBlock: !Not [!Equals [!Ref CapacityReservationId, ""]]
   UseOnDemand: !Equals [!Ref CapacityReservationId, ""]
+  CreateQueue: !Not [!Equals [!Ref QueueName, ""]]
 
 Resources:
 
@@ -141,6 +142,7 @@ Resources:
 
   PCSQueueCompute:
     Type: AWS::PCS::Queue
+    Condition: CreateQueue
     Properties:
       ClusterId: !Ref ClusterId
       Name: !Ref QueueName
@@ -445,6 +447,13 @@ Resources:
             - !Ref AWS::NoValue
 
 Outputs:
+  NodeGroupId:
+    Description: Compute Node Group ID
+    Value: !GetAtt PCSNodeGroupCompute.Id
+  QueueId:
+    Condition: CreateQueue
+    Description: Queue ID
+    Value: !GetAtt PCSQueueCompute.Id
   LaunchTemplateId:
     Description: Launch template Id
     Value: !Ref PCSLaunchTemplate

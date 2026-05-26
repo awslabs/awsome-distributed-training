@@ -38,32 +38,33 @@ Deploy the complete PCS ML cluster with a single nested CloudFormation stack:
 - ✅ VPC with public/private subnets, NAT gateway, S3 endpoint
 - ✅ FSx for Lustre (high-throughput shared storage)
 - ✅ FSx for OpenZFS (home directories)
-- ✅ Custom DLAMI with PCS agent and Slurm
+- ✅ Custom DLAMI with PCS agent and Slurm (optional, enabled by default)
 - ✅ AWS PCS cluster with Slurm scheduler
-- ✅ Login node group (e.g., m6i.4xlarge)
-- ✅ CPU compute node group (e.g., c6i.4xlarge)
-- ⚙️ Additional on-demand GPU compute node group (optional, e.g., g5.12xlarge)
-- ⚙️ Additional P-series compute node group with On-Demand Capacity Reservation (ODCR) or Capacity Blocks for ML (optional, e.g., p5.48xlarge)
+- ✅ Login node group (m6i.4xlarge)
+- ✅ CPU compute node group - cpu1 queue (c6i.4xlarge, enabled by default)
+- ⚙️ Additional P-series compute node group with ODCR or Capacity Blocks for ML (optional, e.g., p5.48xlarge)
 
 **Key Parameters:**
 - `PrimarySubnetAZ`: Availability Zone for deployment (required)
 - `BuildAMI`: Build custom DLAMI (`true`/`false`, default: `true`)
-- `DeployOnDemandCNG`: Deploy additional on-demand GPU queue (`true`/`false`, default: `false`)
+- `DeployOnDemandCNG`: Deploy cpu1 compute queue (`true`/`false`, default: `true`)
+- `OnDemandInstanceType`: Instance type for cpu1 queue (default: `c6i.4xlarge`)
 - `DeployPseriesCNG`: Deploy P-series queue with ODCR or Capacity Blocks for ML (`true`/`false`, default: `false`)
 - `CapacityReservationId`: Capacity Reservation ID (required if deploying in Capacity Blocks for ML)
 
-**Example deployment with GPU queue:**
+**Example deployment (minimal parameters):**
 ```bash
 aws cloudformation create-stack \
   --stack-name my-pcs-cluster \
   --template-url https://awsome-distributed-ai.s3.amazonaws.com/templates/pcs-ml-cluster-deploy-all.yaml \
   --parameters \
     ParameterKey=PrimarySubnetAZ,ParameterValue=us-east-1a \
-    ParameterKey=DeployOnDemandCNG,ParameterValue=true \
-    ParameterKey=OnDemandInstanceType,ParameterValue=g5.12xlarge \
-    ParameterKey=OnDemandMaxCount,ParameterValue=8 \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
 ```
+
+This creates a cluster with:
+- 1 login node (m6i.4xlarge)
+- cpu1 queue with c6i.4xlarge instances (0-4 instances, dynamic scaling)
 
 ### Option 2: Individual Components
 
@@ -73,8 +74,8 @@ Deploy components separately for more control:
 |-----------|-------------|--------|-------------|
 | **Prerequisites** | VPC, subnets, security groups, FSx filesystems | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/ml-cluster-prerequisites.yaml&stackName=pcs-prerequisites) | Use existing VPC or customize networking |
 | **PCS-ready DLAMI with Enroot/Pyxis** | Adds Enroot/Pyxis to PCS-ready DLAMI | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/pcs-ready-dlami-with-enroot-pyxis.yaml&stackName=pcs-dlami) | Build custom AMI with container support |
-| **PCS Cluster** | Main cluster with login and compute nodes | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/cluster.yaml&stackName=pcs-cluster) | Deploy cluster to existing VPC/FSx |
-| **Add CNG (Single NIC)** | Additional compute nodes with single network interface | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/add-cng.yaml&stackName=pcs-add-cng) | Add CPU/GPU queues (G5, G6e, G6 etc.) |
+| **PCS Cluster** | Main PCS cluster (without compute nodes) | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/cluster.yaml&stackName=pcs-cluster) | Deploy cluster to existing VPC/FSx (requires add-cng.yaml for nodes) |
+| **Add CNG (Single NIC)** | Compute node groups with single network interface | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/add-cng.yaml&stackName=pcs-add-cng) | Add login nodes, CPU/GPU queues (C6i, G5, G6 etc.) |
 | **Add CNG (Multi NIC)** | P5/P6 nodes with 16/32 network interfaces (On-Demand or Capacity Blocks for ML) | [<kbd>Deploy 🚀</kbd>](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://awsome-distributed-ai.s3.amazonaws.com/templates/add-cng-p5.yaml&stackName=pcs-add-cng-p5) | Add P-series (P5/P5e/P5en, P6-B200 instances) |
 
 ### Option 3: Manual Step-by-Step
@@ -89,17 +90,17 @@ For detailed step-by-step deployment instructions, see the [AI/ML for AWS Parall
 
 | Template | Purpose | Nested Stacks |
 |----------|---------|---------------|
-| [`pcs-ml-cluster-deploy-all.yaml`](./assets/pcs-ml-cluster-deploy-all.yaml) | All-in-one nested stack deployment | Prerequisites + DLAMI + Cluster + Optional CNGs |
+| [`pcs-ml-cluster-deploy-all.yaml`](./assets/pcs-ml-cluster-deploy-all.yaml) | All-in-one nested stack deployment | Prerequisites + DLAMI + Cluster + Login/Compute CNGs |
 | [`ml-cluster-prerequisites.yaml`](./assets/ml-cluster-prerequisites.yaml) | VPC, subnets, FSx for Lustre/OpenZFS | Standalone |
 | [`pcs-ready-dlami-with-enroot-pyxis.yaml`](./assets/pcs-ready-dlami-with-enroot-pyxis.yaml) | EC2 Image Builder for PCS AMI with Enroot/Pyxis | Standalone |
-| [`cluster.yaml`](./assets/cluster.yaml) | PCS cluster with login and compute nodes | Standalone |
+| [`cluster.yaml`](./assets/cluster.yaml) | PCS cluster core (scheduler only, no nodes) | Standalone |
 
 ### Add-on Templates
 
-| Template | Purpose | Network Interface | Prerequisites |
-|----------|---------|-------------------|---------------|
-| [`add-cng.yaml`](./assets/add-cng.yaml) | Add compute node group for CPU/GPU instances | Single | Existing PCS cluster |
-| [`add-cng-p5.yaml`](./assets/add-cng-p5.yaml) | Add P5/P6 compute nodes (On-Demand or Capacity Block) | Multi (16/32 EFA) | Existing PCS cluster (+ Capacity Reservation for CB) |
+| Template | Purpose | Network Interface | Queue Creation | Prerequisites |
+|----------|---------|-------------------|----------------|---------------|
+| [`add-cng.yaml`](./assets/add-cng.yaml) | Add compute node group for login/CPU/GPU nodes | Single | Optional (specify QueueName or leave empty for login nodes) | Existing PCS cluster |
+| [`add-cng-p5.yaml`](./assets/add-cng-p5.yaml) | Add P5/P6 compute nodes (On-Demand or Capacity Block) | Multi (16/32 EFA) | Optional (specify QueueName or leave empty) | Existing PCS cluster (+ Capacity Reservation for CB) |
 
 ---
 
@@ -160,7 +161,7 @@ The custom DLAMI built by `pcs-ready-dlami-with-enroot-pyxis.yaml` adds containe
 
 ## Usage Examples
 
-### Example 1: Basic CPU Cluster
+### Example 1: Basic CPU Cluster (Default)
 
 ```bash
 aws cloudformation create-stack \
@@ -168,11 +169,14 @@ aws cloudformation create-stack \
   --template-url https://awsome-distributed-ai.s3.amazonaws.com/templates/pcs-ml-cluster-deploy-all.yaml \
   --parameters \
     ParameterKey=PrimarySubnetAZ,ParameterValue=us-east-1a \
-    ParameterKey=ComputeNodeInstanceType,ParameterValue=c6i.4xlarge \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
 ```
 
-### Example 2: GPU Cluster with GG Instances (Single NIC)
+This deploys:
+- 1 login node (m6i.4xlarge)
+- cpu1 queue with c6i.4xlarge instances (0-4 instances, dynamic scaling)
+
+### Example 2: GPU Cluster with G6 Instances (Single NIC)
 
 ```bash
 aws cloudformation create-stack \
@@ -180,13 +184,14 @@ aws cloudformation create-stack \
   --template-url https://awsome-distributed-ai.s3.amazonaws.com/templates/pcs-ml-cluster-deploy-all.yaml \
   --parameters \
     ParameterKey=PrimarySubnetAZ,ParameterValue=us-east-1a \
-    ParameterKey=DeployOnDemandCNG,ParameterValue=true \
     ParameterKey=OnDemandCngName,ParameterValue=gpu-g6 \
     ParameterKey=OnDemandQueueName,ParameterValue=gpu-g6 \
-    ParameterKey=OnDemandInstanceType,ParameterValue=g6.xlarge \
-    ParameterKey=OnDemandMaxCount,ParameterValue=16 \
+    ParameterKey=OnDemandInstanceType,ParameterValue=g6.12xlarge \
+    ParameterKey=OnDemandMaxCount,ParameterValue=8 \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
 ```
+
+This replaces the default cpu1 queue with a GPU queue (gpu-g6) using g6.12xlarge instances.
 
 ### Example 3: P5 On-Demand Capacity Reservation (ODCR) Cluster (Multi NIC, Static)
 
@@ -236,23 +241,25 @@ After deployment completes, connect to the login node using AWS Systems Manager 
 
 ### Connect via Session Manager
 
-1. **Get the EC2 Console URL** from the CloudFormation stack outputs:
-   ```bash
-   aws cloudformation describe-stacks \
-     --stack-name pcs-ml-cluster \
-     --query 'Stacks[0].Outputs[?OutputKey==`Ec2ConsoleUrl`].OutputValue' \
-     --output text
-   ```
+1. **Navigate to EC2 Console** and filter instances by tag:
+   - Go to the [EC2 Console](https://console.aws.amazon.com/ec2/home#Instances:)
+   - Filter by tag: `aws:pcs:compute-node-group-name` = `login`
+   - Or use CLI to get PCS Console URL:
+     ```bash
+     aws cloudformation describe-stacks \
+       --stack-name pcs-ml-cluster \
+       --query 'Stacks[0].Outputs[?OutputKey==`PcsConsoleUrl`].OutputValue' \
+       --output text
+     ```
 
-2. **Open the URL in your browser** - This will take you to the EC2 console filtered to show only the login node instances.
+2. **Select the login node instance** in the EC2 console.
 
-3. **Connect to the login node**:
-   - Select the login node instance
+3. **Connect via Session Manager**:
    - Click **Connect** button
    - Choose **Session Manager** tab
    - Click **Connect**
 
-4. **Switch to the default user** (ubuntu for Ubuntu AMI, ec2-user for Amazon Linux):
+4. **Switch to the default user** (ubuntu for Ubuntu 24.04 AMI):
    ```bash
    sudo su - ubuntu
    ```
@@ -318,9 +325,10 @@ This architecture has been tested with the following configurations:
 
 **Infrastructure Templates:**
 - `ml-cluster-prerequisites.yaml`: Deployed and validated in multiple regions (us-east-1, us-west-2, us-east-2)
-- `cluster.yaml`: Tested with CPU compute nodes (c6i.4xlarge) and login nodes (m6i.4xlarge)
-- `add-cng.yaml`: Validated with G6 instances (g6.xlarge, g6.12xlarge)
+- `cluster.yaml`: Creates PCS cluster core with Slurm scheduler (validated with 25.05 and 25.11)
+- `add-cng.yaml`: Validated with login nodes (m6i.4xlarge), CPU nodes (c6i.4xlarge), and GPU nodes (g6.xlarge, g6.12xlarge)
 - `add-cng-p5.yaml`: Tested with P5 instances (p5.48xlarge, p5en.48xlarge) using both On-Demand Capacity Reservations and Capacity Blocks for ML
+- `pcs-ml-cluster-deploy-all.yaml`: Orchestrates all components via nested stacks, tested with default cpu1 queue and optional P-series queues
 
 **AMI Builder:**
 - `pcs-ready-dlami-with-enroot-pyxis.yaml`: Successfully built Ubuntu 24.04 x86_64 AMIs with Enroot 3.5.0 and Pyxis 0.20.0
