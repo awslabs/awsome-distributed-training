@@ -12,15 +12,20 @@
 # It auto-detects the current node and SSHes to all other nodes.
 # Compute nodes are configured in parallel for large clusters (500+ nodes).
 #
-# Modes:
-#   File mode:        If "shared_users.txt" exists, reads users from it,
-#                     validates, and creates only new users on all nodes.
-#   Interactive mode:  If no file found, prompts for usernames/UIDs interactively.
+# Modes (priority order):
+#   1. CLI mode:        sudo ./create-users.sh user1 user2 user3
+#                       Bypasses file/interactive, auto-assigns UIDs.
+#   2. File mode:       If "shared_users.txt" exists, reads users from it,
+#                       validates, and creates only new users on all nodes.
+#                       Also offers to add additional users interactively.
+#   3. Interactive mode: If no file found, prompts for usernames/UIDs.
 #
 # After creating users, appends to "shared_users.txt" and optionally
 # uploads to the lifecycle S3 bucket.
 #
-# Usage: sudo ./create-users.sh
+# Usage:
+#   sudo ./create-users.sh                  # file or interactive mode
+#   sudo ./create-users.sh user1 user2      # CLI mode (auto-assign UIDs)
 #
 # Prerequisites:
 #   - jq installed on the current node
@@ -124,7 +129,27 @@ echo "  Current node:      $CURRENT_HOST"
 echo "  SSH user:          $SSH_USER"
 echo "  Controller group:  ${CONTROLLER_GROUP:-not found}"
 echo "  Login group:       ${LOGIN_GROUP:-not configured}"
-echo "  Worker group(s):   ${WORKER_GROUPS:-not found}"
+echo "  Worker group(s):   $(echo "${WORKER_GROUPS:-not found}" | tr '\n' ', ' | sed 's/, *$//')"
+
+# Fetch fresh resource_config.json from controller if not running on controller
+if [[ -n "$CONTROLLER_GROUP" ]]; then
+    CONTROLLER_IP=$(jq -r --arg name "$CONTROLLER_GROUP" \
+        '.InstanceGroups[] | select(.Name == $name) | .Instances // [] | .[0].CustomerIpAddress' \
+        "$RESOURCE_CONFIG" 2>/dev/null)
+    CURRENT_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+
+    if [[ -n "$CONTROLLER_IP" && "$CURRENT_IP" != "$CONTROLLER_IP" ]]; then
+        CONTROLLER_HOSTNAME=$(ip_to_hostname "$CONTROLLER_IP")
+        FRESH_RC="/tmp/resource_config_fresh.json"
+        if sudo -u "$SSH_USER" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            "$CONTROLLER_HOSTNAME" "cat /opt/ml/config/resource_config.json" > "$FRESH_RC" 2>/dev/null; then
+            RESOURCE_CONFIG="$FRESH_RC"
+            echo "  ✓ Using fresh resource_config.json from controller ($CONTROLLER_HOSTNAME)"
+        else
+            echo "  ⚠ Could not fetch fresh resource_config from controller — using local copy"
+        fi
+    fi
+fi
 
 # Build node lists
 CONTROLLER_NODES=()
@@ -169,16 +194,41 @@ echo "========================================"
 echo " Step 1: User Configuration"
 echo "========================================"
 
-declare -a USERS_DATA=()  # "user,uid,/fsx/user" entries to create
+declare -a USERS_DATA=()        # "user,uid,/fsx/user" entries to create locally
+declare -a USERS_TO_PROPAGATE=() # All users to ensure exist on remote nodes (new + existing locally)
 MAKE_SUDOER="n"
 
-if [[ -f "$SHARED_USERS_FILE" && -s "$SHARED_USERS_FILE" ]]; then
+if [[ $# -gt 0 ]]; then
+    # --- CLI MODE — usernames passed as arguments ---
+    echo "  Users from CLI args: $*"
+    USERS=("$@")
+
+    # Validate
+    for user in "${USERS[@]}"; do
+        [[ -z "$user" ]] && continue
+        if id "$user" &>/dev/null; then
+            echo "    ⚠ $user already exists — will propagate to remote"
+            uid=$(id -u "$user")
+            USERS_TO_PROPAGATE+=("${user},${uid},/fsx/${user}")
+        else
+            echo "    ✓ $user — will be created (auto-assign UID)"
+            USERS_DATA+=("${user},,/fsx/${user}")
+            USERS_TO_PROPAGATE+=("${user},,/fsx/${user}")
+        fi
+    done
+
+    read -p "  Make these user(s) sudoer(s)? (y/N): " MAKE_SUDOER
+    MAKE_SUDOER=${MAKE_SUDOER:-n}
+    MAKE_SUDOER=$(echo "$MAKE_SUDOER" | tr '[:upper:]' '[:lower:]')
+
+elif [[ -f "$SHARED_USERS_FILE" && -s "$SHARED_USERS_FILE" ]]; then
     # --- FILE MODE ---
     echo "  Found $SHARED_USERS_FILE — validating entries..."
     echo ""
 
     new_count=0
-    skip_count=0
+    existing_count=0
+    conflict_count=0
     while IFS="," read -r username uid_str home; do
         [[ -z "$username" || "$username" == \#* ]] && continue
         username=$(echo "$username" | tr -d ' ')
@@ -186,34 +236,83 @@ if [[ -f "$SHARED_USERS_FILE" && -s "$SHARED_USERS_FILE" ]]; then
         home=$(echo "$home" | tr -d ' ')
 
         if id "$username" &>/dev/null; then
-            echo "    ⚠ $username (UID: $uid_str) — already exists, will skip"
-            ((skip_count++))
+            echo "    ⚠ $username (UID: $uid_str) — exists locally, will verify on remote nodes"
+            USERS_TO_PROPAGATE+=("${username},${uid_str},${home}")
+            ((existing_count++))
         elif getent passwd "$uid_str" &>/dev/null; then
             existing=$(getent passwd "$uid_str" | cut -d: -f1)
             echo "    ✗ $username (UID: $uid_str) — UID conflict with '$existing', will skip"
-            ((skip_count++))
+            ((conflict_count++))
         else
             echo "    ✓ $username (UID: $uid_str) — new, will be created"
             USERS_DATA+=("${username},${uid_str},${home}")
+            USERS_TO_PROPAGATE+=("${username},${uid_str},${home}")
             ((new_count++))
         fi
     done < "$SHARED_USERS_FILE"
 
     echo ""
-    echo "  New: $new_count | Skipped: $skip_count"
+    echo "  New: $new_count | Existing (will propagate): $existing_count | Conflicts: $conflict_count"
 
-    if [[ $new_count -eq 0 ]]; then
-        echo "  No new users to create. Exiting."
+    if [[ $new_count -eq 0 && $existing_count -eq 0 ]]; then
+        echo "  No users to create or propagate. Exiting."
         exit 0
     fi
 
-    read -p "  Create $new_count new user(s) on all nodes? [Y/n]: " confirm
-    confirm=${confirm:-Y}
-    [[ ! "$confirm" =~ ^[Yy] ]] && echo "  Aborted." && exit 0
+    if [[ $new_count -gt 0 ]]; then
+        read -p "  Create $new_count new user(s) on all nodes? [Y/n]: " confirm
+        confirm=${confirm:-Y}
+        [[ ! "$confirm" =~ ^[Yy] ]] && { USERS_DATA=(); echo "  Skipping new users from file."; }
+    else
+        echo "  No new users to create locally. Existing user(s) will be verified on remote nodes."
+    fi
 
-    read -p "  Make these user(s) sudoer(s)? (y/N): " MAKE_SUDOER
+    read -p "  Make user(s) sudoer(s)? (y/N): " MAKE_SUDOER
     MAKE_SUDOER=${MAKE_SUDOER:-n}
     MAKE_SUDOER=$(echo "$MAKE_SUDOER" | tr '[:upper:]' '[:lower:]')
+
+    # Checking if more users needs to be added which are not part of the shared_users.txt, this will enter interactive mode
+    echo ""
+    read -p "  Add additional users not in the file? [y/N]: " ADD_MORE
+    ADD_MORE=$(echo "${ADD_MORE:-n}" | tr '[:upper:]' '[:lower:]')
+    if [[ "$ADD_MORE" == "y" ]]; then
+        read -p "  Enter username(s), comma-separated: " EXTRA_INPUT
+        if [[ -n "$EXTRA_INPUT" ]]; then
+            IFS=',' read -ra EXTRA_USERS <<< "$EXTRA_INPUT"
+            EXTRA_USERS=("${EXTRA_USERS[@]// /}")
+
+            echo ""
+            read -p "  Specify UIDs for these users? (Enter for auto-assign, or comma-separated): " EXTRA_UID_INPUT
+            EXTRA_UIDS=()
+            if [[ -n "$EXTRA_UID_INPUT" ]]; then
+                IFS=',' read -ra EXTRA_UIDS <<< "$EXTRA_UID_INPUT"
+                EXTRA_UIDS=("${EXTRA_UIDS[@]// /}")
+                if [[ ${#EXTRA_UIDS[@]} -ne ${#EXTRA_USERS[@]} ]]; then
+                    echo "  [WARN] UID count mismatch — will auto-assign UIDs for extra users"
+                    EXTRA_UIDS=()
+                fi
+            fi
+
+            for i in "${!EXTRA_USERS[@]}"; do
+                user="${EXTRA_USERS[$i]}"
+                [[ -z "$user" ]] && continue
+                if id "$user" &>/dev/null; then
+                    echo "    ⚠ $user already exists locally — will propagate to remote"
+                    uid=$(id -u "$user")
+                    USERS_TO_PROPAGATE+=("${user},${uid},/fsx/${user}")
+                elif [[ ${#EXTRA_UIDS[@]} -gt 0 ]] && getent passwd "${EXTRA_UIDS[$i]}" &>/dev/null; then
+                    echo "    ✗ UID ${EXTRA_UIDS[$i]} conflict — skipping $user"
+                else
+                    echo "    ✓ $user — will be created"
+                    uid_flag=""
+                    [[ ${#EXTRA_UIDS[@]} -gt 0 ]] && uid_flag="${EXTRA_UIDS[$i]}"
+                    # Store with uid_flag or empty (auto-assign handled in Step 2)
+                    USERS_DATA+=("${user},${uid_flag},/fsx/${user}")
+                    USERS_TO_PROPAGATE+=("${user},${uid_flag},/fsx/${user}")
+                fi
+            done
+        fi
+    fi
 
 else
     # --- INTERACTIVE MODE ---
@@ -335,9 +434,13 @@ else
     done
 fi
 
-if [[ ${#CREATED_USERS_DATA[@]} -eq 0 ]]; then
-    echo "  No users were created. Exiting."
+if [[ ${#CREATED_USERS_DATA[@]} -eq 0 && ${#USERS_TO_PROPAGATE[@]} -eq 0 ]]; then
+    echo "  No users were created or need propagation. Exiting."
     exit 0
+fi
+
+if [[ ${#CREATED_USERS_DATA[@]} -eq 0 && ${#USERS_TO_PROPAGATE[@]} -gt 0 ]]; then
+    echo "  No new users created locally. Will propagate existing users to remote nodes."
 fi
 
 # ===================================================================
@@ -383,17 +486,26 @@ echo "========================================"
 echo " Step 4: Create users on remote nodes"
 echo "========================================"
 
+# Determine which users to propagate to remote nodes
+# In file mode: USERS_TO_PROPAGATE includes both new + existing-locally users
+# In interactive mode: only newly created users (CREATED_USERS_DATA)
+if [[ ${#USERS_TO_PROPAGATE[@]} -gt 0 ]]; then
+    REMOTE_USERS=("${USERS_TO_PROPAGATE[@]}")
+else
+    REMOTE_USERS=("${CREATED_USERS_DATA[@]}")
+fi
+
 # Controller (sequential)
 if [[ ${#REMOTE_CONTROLLER[@]} -gt 0 ]]; then
     for node in "${REMOTE_CONTROLLER[@]}"; do
-        create_users_on_remote "$node" "controller" "$MAKE_SUDOER" "${CREATED_USERS_DATA[@]}"
+        create_users_on_remote "$node" "controller" "$MAKE_SUDOER" "${REMOTE_USERS[@]}"
     done
 fi
 
 # Login (sequential)
 if [[ ${#REMOTE_LOGIN[@]} -gt 0 ]]; then
     for node in "${REMOTE_LOGIN[@]}"; do
-        create_users_on_remote "$node" "login" "$MAKE_SUDOER" "${CREATED_USERS_DATA[@]}"
+        create_users_on_remote "$node" "login" "$MAKE_SUDOER" "${REMOTE_USERS[@]}"
     done
 fi
 
@@ -402,7 +514,7 @@ if [[ ${#REMOTE_COMPUTE[@]} -gt 0 ]]; then
     echo "  Compute nodes (${#REMOTE_COMPUTE[@]}, parallel max=$MAX_PARALLEL):"
     running=0
     for node in "${REMOTE_COMPUTE[@]}"; do
-        create_users_on_remote "$node" "compute" "$MAKE_SUDOER" "${CREATED_USERS_DATA[@]}" &
+        create_users_on_remote "$node" "compute" "$MAKE_SUDOER" "${REMOTE_USERS[@]}" &
         ((running++)) || true
         if ((running >= MAX_PARALLEL)); then
             wait -n 2>/dev/null || true
@@ -460,11 +572,21 @@ echo "========================================"
 echo " Step 6: Update shared_users.txt"
 echo "========================================"
 
+appended_count=0
 for entry in "${CREATED_USERS_DATA[@]}"; do
-    echo "$entry" >> "$SHARED_USERS_FILE"
-    echo "  + $entry"
+    IFS=',' read -r user uid home <<< "$entry"
+    # Check for duplicate by username or UID before appending
+    if grep -q "^${user}," "$SHARED_USERS_FILE" 2>/dev/null; then
+        echo "  ⚠ $user already in file — skipping"
+    elif grep -q ",${uid}," "$SHARED_USERS_FILE" 2>/dev/null; then
+        echo "  ⚠ UID $uid already in file — skipping"
+    else
+        echo "$entry" >> "$SHARED_USERS_FILE"
+        echo "  + $entry"
+        ((appended_count++)) || true
+    fi
 done
-echo "  ✓ Appended ${#CREATED_USERS_DATA[@]} user(s) to $SHARED_USERS_FILE"
+echo "  ✓ Appended $appended_count user(s) to $SHARED_USERS_FILE"
 echo ""
 read -p "  Upload shared_users.txt to S3? Enter bucket URI (or Enter to skip): " S3_BUCKET_URI
 S3_BUCKET_URI="${S3_BUCKET_URI%/}"
