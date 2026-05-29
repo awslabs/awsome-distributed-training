@@ -15,10 +15,12 @@
 # Modes (priority order):
 #   1. CLI mode:        sudo ./create-users.sh user1 user2 user3
 #                       Bypasses file/interactive, auto-assigns UIDs.
-#   2. File mode:       If "shared_users.txt" exists, reads users from it,
+#   2. File mode (.txt): If "shared_users.txt" exists, reads users from it,
 #                       validates, and creates only new users on all nodes.
 #                       Also offers to add additional users interactively.
-#   3. Interactive mode: If no file found, prompts for usernames/UIDs.
+#   3. File mode (.yaml): If "shared_users.yaml" exists, parses user definitions
+#                       (supports simple user list or groups format).
+#   4. Interactive mode: If no file found, prompts for usernames/UIDs.
 #
 # After creating users, appends to "shared_users.txt" and optionally
 # uploads to the lifecycle S3 bucket.
@@ -83,8 +85,10 @@ create_users_on_remote() {
 
     for entry in "${users_data[@]}"; do
         IFS=',' read -r user uid home <<< "$entry"
+        local uid_part=""
+        [[ -n "$uid" ]] && uid_part="-u $uid"
         local cmd="(id $user &>/dev/null && echo '${user}:EXISTS'"
-        cmd+=" || (sudo useradd -M -u $uid $user -d $home --shell /bin/bash"
+        cmd+=" || (sudo useradd -M $uid_part $user -d $home --shell /bin/bash"
         cmd+=" && (getent group docker &>/dev/null && sudo usermod -aG docker $user && echo '${user}:DOCKER' || true)"
         [[ "$make_sudoer" == "y" ]] && cmd+=" && (sudo usermod -aG sudo $user 2>/dev/null || sudo usermod -aG wheel $user 2>/dev/null || true) && echo '${user}:SUDOER'"
         cmd+=" && echo '${user}:CREATED' || echo '${user}:FAILED'))"
@@ -260,7 +264,7 @@ elif [[ -f "$SHARED_USERS_FILE" && -s "$SHARED_USERS_FILE" ]]; then
     fi
 
     if [[ $new_count -gt 0 ]]; then
-        read -p "  Create $new_count new user(s) on all nodes? [Y/n]: " confirm
+        read -p "  Create $new_count new user(s) on current node and propagate to all remote nodes? [Y/n]: " confirm
         confirm=${confirm:-Y}
         [[ ! "$confirm" =~ ^[Yy] ]] && { USERS_DATA=(); echo "  Skipping new users from file."; }
     else
@@ -314,12 +318,86 @@ elif [[ -f "$SHARED_USERS_FILE" && -s "$SHARED_USERS_FILE" ]]; then
         fi
     fi
 
+elif [[ -f "shared_users.yaml" ]]; then
+    # --- YAML FILE MODE ---
+    echo "  Found shared_users.yaml — parsing with Python..."
+
+    if ! python3 -c "import yaml" &>/dev/null; then
+        echo "[ERROR] PyYAML not available. Install with: pip3 install pyyaml"
+        exit 1
+    fi
+
+    # Extract username,uid pairs from YAML (supports both simple 'users:' and 'groups:' format)
+    yaml_output=$(python3 -c "
+import yaml, sys
+try:
+    with open('shared_users.yaml') as f:
+        config = yaml.safe_load(f)
+    if not config:
+        sys.exit(0)
+    users = config.get('users', [])
+    for g in config.get('groups', []):
+        users.extend(g.get('users', []))
+    for u in users:
+        print(f\"{u['username']},{u['uid']},/fsx/{u['username']}\")
+except Exception as e:
+    print(f'ERROR:{e}', file=sys.stderr)
+    sys.exit(1)
+" 2>&1)
+
+    if [[ $? -ne 0 ]]; then
+        echo "[ERROR] Failed to parse shared_users.yaml: $yaml_output"
+        exit 1
+    fi
+
+    if [[ -z "$yaml_output" ]]; then
+        echo "  No users defined in shared_users.yaml."
+        exit 0
+    fi
+
+    new_count=0
+    existing_count=0
+    while IFS="," read -r username uid_str home; do
+        [[ -z "$username" ]] && continue
+        if id "$username" &>/dev/null; then
+            echo "    ⚠ $username (UID: $uid_str) — exists locally, will verify on remote nodes"
+            USERS_TO_PROPAGATE+=("${username},${uid_str},${home}")
+            ((existing_count++))
+        elif getent passwd "$uid_str" &>/dev/null; then
+            existing=$(getent passwd "$uid_str" | cut -d: -f1)
+            echo "    ✗ $username (UID: $uid_str) — UID conflict with '$existing', will skip"
+        else
+            echo "    ✓ $username (UID: $uid_str) — new, will be created"
+            USERS_DATA+=("${username},${uid_str},${home}")
+            USERS_TO_PROPAGATE+=("${username},${uid_str},${home}")
+            ((new_count++))
+        fi
+    done <<< "$yaml_output"
+
+    echo ""
+    echo "  New: $new_count | Existing (will propagate): $existing_count"
+
+    if [[ $new_count -eq 0 && $existing_count -eq 0 ]]; then
+        echo "  No users to create or propagate. Exiting."
+        exit 0
+    fi
+
+    if [[ $new_count -gt 0 ]]; then
+        read -p "  Create $new_count new user(s) on current node and propagate to all remote nodes? [Y/n]: " confirm
+        confirm=${confirm:-Y}
+        [[ ! "$confirm" =~ ^[Yy] ]] && { USERS_DATA=(); echo "  Skipping new users from YAML."; }
+    fi
+
+    read -p "  Make user(s) sudoer(s)? (y/N): " MAKE_SUDOER
+    MAKE_SUDOER=${MAKE_SUDOER:-n}
+    MAKE_SUDOER=$(echo "$MAKE_SUDOER" | tr '[:upper:]' '[:lower:]')
+
 else
     # --- INTERACTIVE MODE ---
     if [[ -f "$SHARED_USERS_FILE" ]]; then
         echo "  $SHARED_USERS_FILE is empty."
     else
-        echo "  No $SHARED_USERS_FILE found."
+        echo "  No $SHARED_USERS_FILE or shared_users.yaml found."
     fi
     echo "  Entering interactive mode..."
     echo ""
@@ -378,7 +456,7 @@ if [[ ${#USERS_DATA[@]} -gt 0 ]]; then
     # FILE MODE — create from validated USERS_DATA
     for entry in "${USERS_DATA[@]}"; do
         IFS=',' read -r user uid_str fsx_dir <<< "$entry"
-        uid_flag="--uid $uid_str"
+        if [[ -n "$uid_str" ]]; then uid_flag="--uid $uid_str"; else uid_flag=""; fi
 
         if [[ "$USE_OPENZFS" == true ]]; then
             home_dir="/home/$user"
@@ -402,10 +480,15 @@ if [[ ${#USERS_DATA[@]} -gt 0 ]]; then
         getent group docker &>/dev/null && usermod -aG docker "$user" && echo "    Added to docker group"
         [[ "$MAKE_SUDOER" == "y" ]] && { usermod -aG sudo "$user" 2>/dev/null || usermod -aG wheel "$user" 2>/dev/null || true; echo "    Added to sudoer group"; }
     done
-else
-    # INTERACTIVE MODE — create from USERS array
+elif [[ ${USERS+x} && ${#USERS[@]} -gt 0 ]]; then
+    # INTERACTIVE/CLI MODE — create from USERS array (only new users)
     for i in "${!USERS[@]}"; do
         user="${USERS[$i]}"
+        # Skip users that already exist locally (CLI mode propagation-only users)
+        if id "$user" &>/dev/null; then
+            echo "  ⚠ User '$user' already exists locally (will propagate to remote)"
+            continue
+        fi
         fsx_dir="/fsx/$user"
         uid_flag=""
         [[ ${#USER_UIDS[@]} -gt 0 ]] && uid_flag="--uid ${USER_UIDS[$i]}"
@@ -443,6 +526,21 @@ if [[ ${#CREATED_USERS_DATA[@]} -eq 0 && ${#USERS_TO_PROPAGATE[@]} -gt 0 ]]; the
     echo "  No new users created locally. Will propagate existing users to remote nodes."
 fi
 
+# Backfill empty UIDs in USERS_TO_PROPAGATE with actual UIDs from local creation
+# This ensures remote nodes get the same UID assigned locally (Making sure UID stays consistent across cluster)
+for i in "${!USERS_TO_PROPAGATE[@]}"; do
+    IFS=',' read -r p_user p_uid p_home <<< "${USERS_TO_PROPAGATE[$i]}"
+    if [[ -z "$p_uid" ]]; then
+        for entry in "${CREATED_USERS_DATA[@]}"; do
+            IFS=',' read -r c_user c_uid c_home <<< "$entry"
+            if [[ "$c_user" == "$p_user" ]]; then
+                USERS_TO_PROPAGATE[$i]="${p_user},${c_uid},${p_home}"
+                break
+            fi
+        done
+    fi
+done
+
 # ===================================================================
 # Step 3: Setup SSH keypairs
 # ===================================================================
@@ -459,16 +557,20 @@ for entry in "${CREATED_USERS_DATA[@]}"; do
     chown "$user":"$user" "$ssh_dir" 2>/dev/null || true
     chmod 700 "$ssh_dir" 2>/dev/null || true
 
-    # Generate keypair
-    sudo -u "$user" ssh-keygen -t rsa -q -f "$ssh_dir/id_rsa" -N "" 2>/dev/null || true
-
-    if [[ -f "$ssh_dir/id_rsa.pub" ]]; then
-        sudo -u "$user" cp "$ssh_dir/id_rsa.pub" "$ssh_dir/authorized_keys" 2>/dev/null || true
-        chmod 600 "$ssh_dir/authorized_keys" 2>/dev/null || true
-        chown "$user":"$user" "$ssh_dir/authorized_keys" 2>/dev/null || true
-        echo "  ✓ SSH keypair created for $user"
+    # Generate keypair (skip if already exists)
+    if [[ -f "$ssh_dir/id_rsa" ]]; then
+        echo "  ⚠ SSH keypair already exists for $user (skipped)"
     else
-        echo "  ⚠ SSH keypair generation failed for $user (home dir may not exist on shared storage)"
+        sudo -u "$user" ssh-keygen -t rsa -q -f "$ssh_dir/id_rsa" -N "" 2>/dev/null || true
+
+        if [[ -f "$ssh_dir/id_rsa.pub" ]]; then
+            sudo -u "$user" cp "$ssh_dir/id_rsa.pub" "$ssh_dir/authorized_keys" 2>/dev/null || true
+            chmod 600 "$ssh_dir/authorized_keys" 2>/dev/null || true
+            chown "$user":"$user" "$ssh_dir/authorized_keys" 2>/dev/null || true
+            echo "  ✓ SSH keypair created for $user"
+        else
+            echo "  ⚠ SSH keypair generation failed for $user (home dir may not exist on shared storage)"
+        fi
     fi
 done
 
